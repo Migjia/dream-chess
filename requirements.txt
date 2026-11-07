@@ -1,0 +1,8 @@
+chess>=1.10
+numpy>=1.26
+opencv-python-headless>=4.8
+pytest>=8
+
+# On the station only, using Python 3.11 or 3.12 (the client's YAM setup needs 3.11+):
+#   pip install pyrealsense2 dreamlabs
+# If `ik` can't find its solver, install the platform's own build, as its Setup API page describes.

@@ -1,0 +1,18 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Secrets
+.env
+credentials
+*.key
+
+# Made at the station, and specific to one setup
+calibration.npz
+snapshot.png
+check.png
+station_report.txt
+
+# Exported copy of the team brief
+*.pdf
