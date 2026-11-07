@@ -1,0 +1,47 @@
+{
+  "_how_to_use": "Edit this as work finishes, and the dashboard updates. state is done, simulated, or todo. Only use done once the evidence is real.",
+  "groups": [
+    {
+      "name": "Built and tested in simulation",
+      "items": [
+        {"item": "What: pick the piece", "owner": "C", "state": "simulated", "evidence": "Tests pass with the built-in engine"},
+        {"item": "Where: pick the square and plan steps", "owner": "C", "state": "simulated", "evidence": "Tests pass with the built-in engine"},
+        {"item": "Orchestrator: retry, recover, ask a person", "owner": "C", "state": "simulated", "evidence": "Full games stay in sync against a failing mock robot"},
+        {"item": "Check: top-camera code", "owner": "B", "state": "simulated", "evidence": "Reads a simulated camera, not yet a real one"},
+        {"item": "How: Dream-1 connection", "owner": "A", "state": "simulated", "evidence": "Runs against a fake client, not yet the real API"},
+        {"item": "Visual simulation and README", "owner": "D", "state": "done", "evidence": "GIF and interactive page built from real agent code"},
+        {"item": "Shared GitHub repo", "owner": "All", "state": "done", "evidence": "Public at aballal-source/dream-chess"}
+      ]
+    },
+    {
+      "name": "Team setup",
+      "items": [
+        {"item": "Teammates invited and roles claimed", "owner": "All", "state": "todo", "evidence": "Each person has pushed a branch"},
+        {"item": "What and Where on real Stockfish", "owner": "C", "state": "todo", "evidence": "tests/test_stockfish.py shows 10 passed, not skipped"},
+        {"item": "Choose the demo position", "owner": "C", "state": "todo", "evidence": "A short mate with room around the pieces"}
+      ]
+    },
+    {
+      "name": "Connect to the station",
+      "items": [
+        {"item": "Survey the NUC", "owner": "A", "state": "todo", "evidence": "station_report.txt sent over"},
+        {"item": "Install on the NUC and run tests", "owner": "A", "state": "todo", "evidence": "Tests pass on Python 3.11 or 3.12"},
+        {"item": "Write the station adapter", "owner": "A", "state": "todo", "evidence": "Reads real joints and camera frames"},
+        {"item": "Write run_robot.py", "owner": "C", "state": "todo", "evidence": "Connects the real parts with a terminal opponent"},
+        {"item": "Write a safe home move", "owner": "A", "state": "todo", "evidence": "Lifts straight up and never carries off a piece"},
+        {"item": "Calibrate the top camera", "owner": "B", "state": "todo", "evidence": "All 64 squares read correctly on the real board"}
+      ]
+    },
+    {
+      "name": "Real robot tests, in this order",
+      "items": [
+        {"item": "Dry run with the debug page", "owner": "A", "state": "todo", "evidence": "Right cameras, state, and prompt; arms stay still"},
+        {"item": "check_loop, run by a person at the e-stop", "owner": "A", "state": "todo", "evidence": "Every line prints PASS"},
+        {"item": "Can Dream-1 reach a named square?", "owner": "A + D", "state": "todo", "evidence": "Hits out of 10 tries on an empty board"},
+        {"item": "Can it pick a pawn with neighbors?", "owner": "A + D", "state": "todo", "evidence": "Clean picks out of 10 tries"},
+        {"item": "Full loop on the demo position", "owner": "All", "state": "todo", "evidence": "Game finishes correctly 3 times"},
+        {"item": "Backup video", "owner": "D", "state": "todo", "evidence": "Saved somewhere safe"}
+      ]
+    }
+  ]
+}
