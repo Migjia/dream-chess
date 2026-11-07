@@ -3,7 +3,8 @@
 YAM bimanual arms play chess using DreamAPI. Dream-1 misses too often to trust blindly, so a
 top camera checks every move and the app retries until the board is right.
 
-See [docs/GAME_PLAN.md](docs/GAME_PLAN.md) for who does what and the order to test in.
+- [docs/MISSION.md](docs/MISSION.md): the mission, decisions, where it runs, and how we'll know it works.
+- [docs/GAME_PLAN.md](docs/GAME_PLAN.md): who does what and the order to test in.
 
 ## Run it without a robot
 
