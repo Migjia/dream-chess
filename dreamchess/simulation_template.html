@@ -1,0 +1,324 @@
+<title>Dream Chess Simulation</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;700&family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400&display=swap">
+<style>
+/* Layout: an overhead camera's view of a club board beside the agent loop, with a scoresheet of every step below. */
+:root {
+  --ground: #eef1ea;
+  --surface: #fbfcf8;
+  --ink: #1c2a24;
+  --quiet: #55655c;
+  --rule: #cdd6cc;
+  --accent: #1f6b4c;
+  --accent-soft: #d8eadf;
+  --good: #1f6b4c;
+  --bad: #a83a26;
+  --bad-soft: #f6dfd9;
+  --square-light: #efe9d2;
+  --square-dark: #6f9a78;
+  --disc-white: #fbf8ee;
+  --disc-black: #23302a;
+  --display: "Familjen Grotesk", "Segoe UI", system-ui, sans-serif;
+  --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", Consolas, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --ground: #141b18;
+    --surface: #1d2622;
+    --ink: #e8eee8;
+    --quiet: #a3b1a8;
+    --rule: #34423b;
+    --accent: #6fce9f;
+    --accent-soft: #23402f;
+    --good: #6fce9f;
+    --bad: #f0917c;
+    --bad-soft: #472a23;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ground: #141b18;
+  --surface: #1d2622;
+  --ink: #e8eee8;
+  --quiet: #a3b1a8;
+  --rule: #34423b;
+  --accent: #6fce9f;
+  --accent-soft: #23402f;
+  --good: #6fce9f;
+  --bad: #f0917c;
+  --bad-soft: #472a23;
+}
+body { background: var(--ground); color: var(--ink); font: 16px/1.5 var(--body); }
+.page {
+  max-width: 1040px; margin: 0 auto; padding-block: 28px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 20px;
+}
+h1 { margin: 0; font: 700 clamp(28px, 5vw, 38px)/1.1 var(--display); text-wrap: balance; }
+.intro { margin: 8px 0 0; max-width: 65ch; color: var(--quiet); }
+.stage { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 28px; align-items: start; }
+@media (max-width: 760px) { .stage { grid-template-columns: minmax(0, 1fr); } }
+
+.board-wrap { display: grid; grid-template-columns: 18px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) 18px; gap: 4px; }
+.ranks, .files { display: grid; color: var(--quiet); font: 12px var(--mono); text-align: center; align-items: center; }
+.ranks { grid-template-rows: repeat(8, 1fr); }
+.files { grid-template-columns: repeat(8, 1fr); grid-column: 2; }
+.board { position: relative; aspect-ratio: 1; border-radius: 4px; overflow: hidden; display: grid; grid-template: repeat(8, 1fr) / repeat(8, 1fr); }
+.sq.light { background: var(--square-light); }
+.sq.dark { background: var(--square-dark); }
+.sq.mark { box-shadow: inset 0 0 0 4px var(--accent); }
+.sq.mark.bad { box-shadow: inset 0 0 0 4px #c24a32; }
+.sq.mark.good { box-shadow: inset 0 0 0 4px #14523a; }
+.piece {
+  position: absolute; width: 12.5%; height: 12.5%; display: grid; place-items: center;
+  transition: left .55s ease-in-out, top .55s ease-in-out, opacity .3s;
+}
+.piece span {
+  width: 68%; height: 68%; border-radius: 50%; display: grid; place-items: center;
+  font: 700 clamp(13px, 2.6vw, 21px) var(--display); box-shadow: 0 2px 3px rgb(0 0 0 / .4);
+}
+.piece.w span { background: var(--disc-white); color: #23302a; border: 2px solid #23302a; }
+.piece.b span { background: var(--disc-black); color: #fbf8ee; border: 2px solid #fbf8ee; }
+
+.panel { display: grid; gap: 16px; min-width: 0; }
+.loop { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.loop li {
+  padding: 4px 11px; border: 1px solid var(--rule); border-radius: 4px; color: var(--quiet);
+  font: 500 14px var(--display);
+}
+.loop li.on { background: var(--accent); border-color: var(--accent); color: var(--ground); }
+.loop li.on.bad { background: var(--bad); border-color: var(--bad); }
+.loop .side { border-style: dashed; }
+.now { min-height: 190px; display: grid; gap: 10px; align-content: start; }
+.now h2 { margin: 0; font: 700 22px/1.25 var(--display); text-wrap: balance; }
+.now p { margin: 0; }
+.prompt {
+  margin: 0; padding: 12px 14px; background: var(--surface); border: 1px solid var(--rule); border-radius: 4px;
+  font: 14px/1.5 var(--mono); overflow-wrap: anywhere;
+}
+.tone-bad { color: var(--bad); }
+.tone-good { color: var(--good); }
+.counts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.counts div { display: grid; gap: 0; }
+.counts dt { order: 2; color: var(--quiet); font-size: 13px; line-height: 1.25; }
+.counts dd { order: 1; margin: 0; font: 700 26px/1.2 var(--display); font-variant-numeric: tabular-nums; }
+.controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+button {
+  font: 500 15px var(--display); color: var(--ink); background: var(--surface); border: 1px solid var(--rule);
+  border-radius: 4px; padding: 7px 14px; cursor: pointer;
+}
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--ground); min-width: 84px; }
+button:hover { border-color: var(--accent); }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+input[type="range"] { flex: 1 1 140px; min-width: 0; accent-color: var(--accent); }
+.step-no { color: var(--quiet); font: 13px var(--mono); font-variant-numeric: tabular-nums; }
+
+.sheet { display: grid; gap: 8px; }
+.sheet h2 { margin: 0; font: 700 18px var(--display); }
+.steps { list-style: none; margin: 0; padding: 0; max-height: 300px; overflow-y: auto; border-block: 1px solid var(--rule); }
+.steps button {
+  width: 100%; display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 10px; text-align: left; background: none;
+  border: 0; border-bottom: 1px solid var(--rule); border-radius: 0; padding: 7px 4px; font: 14px/1.4 var(--body);
+}
+.steps li:last-child button { border-bottom: 0; }
+.steps button[aria-current="step"] { background: var(--accent-soft); }
+.steps b { font: 500 13px/1.5 var(--mono); color: var(--quiet); }
+.note { margin: 0; max-width: 72ch; color: var(--quiet); font-size: 14px; }
+</style>
+
+<main class="page">
+  <header>
+    <h1>Dream Chess simulation</h1>
+    <p class="intro">Watch the agent play a mate in two while its robot keeps making mistakes. Each time, the top camera catches the problem and the agent sends a new instruction to fix it.</p>
+  </header>
+
+  <section class="stage">
+    <div class="board-wrap">
+      <div class="ranks" aria-hidden="true"><span>8</span><span>7</span><span>6</span><span>5</span><span>4</span><span>3</span><span>2</span><span>1</span></div>
+      <div class="board" id="board" role="img" aria-label="Chess board seen from above"></div>
+      <div class="files" aria-hidden="true"><span>a</span><span>b</span><span>c</span><span>d</span><span>e</span><span>f</span><span>g</span><span>h</span></div>
+    </div>
+
+    <div class="panel">
+      <ul class="loop" id="loop">
+        <li data-stage="what">What</li>
+        <li data-stage="where">Where</li>
+        <li data-stage="how">How</li>
+        <li data-stage="check">Check</li>
+        <li data-stage="update">Update</li>
+        <li data-stage="opponent" class="side">Opponent</li>
+        <li data-stage="person" class="side">Person</li>
+      </ul>
+      <div class="now" aria-live="polite">
+        <h2 id="headline"></h2>
+        <p id="text"></p>
+        <p class="prompt" id="prompt" hidden></p>
+      </div>
+      <dl class="counts">
+        <div><dt>Moves made</dt><dd id="moves">0</dd></div>
+        <div><dt>Dream-1 attempts</dt><dd id="attempts">0</dd></div>
+        <div><dt>Automatic fixes</dt><dd id="corrections">0</dd></div>
+        <div><dt>Human rescues</dt><dd id="rescues">0</dd></div>
+      </dl>
+      <div class="controls">
+        <button id="back" type="button">Back</button>
+        <button id="play" class="primary" type="button">Play</button>
+        <button id="next" type="button">Next</button>
+        <input id="scrub" type="range" min="0" value="0" aria-label="Step in the game">
+        <span class="step-no" id="stepno"></span>
+      </div>
+    </div>
+  </section>
+
+  <section class="sheet">
+    <h2>Every step of the game</h2>
+    <ol class="steps" id="steps"></ol>
+  </section>
+
+  <p class="note">The What, Where, and orchestrator code here is the real app, using its built-in chess engine. The robot and camera are simulated, and these failures are scripted to show each kind of recovery, so this says nothing about how accurate the real arms will be.</p>
+</main>
+
+<script>
+const FRAMES = /*FRAMES*/[];
+const HEADLINES = {
+  start: "Starting position", what: "What: pick the piece", where: "Where: pick the square",
+  how: "How: move the piece", check: "Check: read the board", update: "Update the board",
+  opponent: "Opponent moves", person: "Ask a person", end: "Game over",
+};
+const LABELS = { start: "Start", what: "What", where: "Where", how: "How", check: "Check", update: "Update", opponent: "Opponent", person: "Person", end: "End" };
+const $ = (id) => document.getElementById(id);
+const board = $("board");
+const motionOk = !matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+const squares = {};
+for (let rank = 8; rank >= 1; rank--) {
+  for (const file of "abcdefgh") {
+    const el = document.createElement("div");
+    const isDark = ("abcdefgh".indexOf(file) + rank) % 2 === 1;
+    el.className = "sq " + (isDark ? "dark" : "light");
+    squares[file + rank] = el;
+    board.appendChild(el);
+  }
+}
+
+function place(el, square) {
+  el.style.left = "abcdefgh".indexOf(square[0]) * 12.5 + "%";
+  el.style.top = (8 - Number(square[1])) * 12.5 + "%";
+}
+
+function makePiece(symbol, square) {
+  const el = document.createElement("div");
+  el.className = "piece " + (symbol === symbol.toUpperCase() ? "w" : "b");
+  el.dataset.symbol = symbol;
+  const face = document.createElement("span");
+  face.textContent = symbol.toUpperCase();
+  el.appendChild(face);
+  place(el, square);
+  board.appendChild(el);
+  return el;
+}
+
+let onBoard = {}; // square -> piece element
+function drawPieces(target) {
+  const next = {};
+  const leftover = [];
+  for (const [square, el] of Object.entries(onBoard)) {
+    if (target[square] === el.dataset.symbol) next[square] = el;
+    else leftover.push(el);
+  }
+  for (const [square, symbol] of Object.entries(target)) {
+    if (next[square]) continue;
+    const index = leftover.findIndex((el) => el.dataset.symbol === symbol);
+    if (index >= 0) {
+      const [el] = leftover.splice(index, 1);
+      place(el, square); // the transition slides it across
+      next[square] = el;
+    } else {
+      next[square] = makePiece(symbol, square);
+    }
+  }
+  leftover.forEach((el) => el.remove());
+  onBoard = next;
+}
+
+const stepButtons = FRAMES.map((frame, i) => {
+  const item = document.createElement("li");
+  const button = document.createElement("button");
+  button.type = "button";
+  const label = document.createElement("b");
+  label.textContent = LABELS[frame.stage];
+  const words = document.createElement("span");
+  words.textContent = frame.prompt || frame.text;
+  if (frame.tone) words.className = "tone-" + frame.tone;
+  button.append(label, words);
+  button.addEventListener("click", () => { stop(); show(i); });
+  item.appendChild(button);
+  $("steps").appendChild(item);
+  return button;
+});
+
+let current = 0;
+function show(i) {
+  current = i;
+  const frame = FRAMES[i];
+  drawPieces(frame.pieces);
+
+  Object.values(squares).forEach((el) => { el.className = el.className.replace(/ mark( bad| good)?/g, ""); });
+  frame.highlight.forEach((square) => { squares[square].className += " mark" + (frame.tone ? " " + frame.tone : ""); });
+
+  document.querySelectorAll("#loop li").forEach((el) => {
+    const on = el.dataset.stage === frame.stage;
+    el.classList.toggle("on", on);
+    el.classList.toggle("bad", on && frame.tone === "bad");
+  });
+
+  $("headline").textContent = HEADLINES[frame.stage];
+  $("text").textContent = frame.text;
+  $("text").className = frame.tone ? "tone-" + frame.tone : "";
+  $("prompt").textContent = frame.prompt;
+  $("prompt").hidden = !frame.prompt;
+  for (const key of ["moves", "attempts", "corrections", "rescues"]) $(key).textContent = frame[key];
+
+  $("scrub").value = i;
+  $("stepno").textContent = `${i + 1} of ${FRAMES.length}`;
+
+  stepButtons.forEach((button) => button.removeAttribute("aria-current"));
+  const active = stepButtons[i];
+  active.setAttribute("aria-current", "step");
+  const list = $("steps");
+  const top = active.offsetTop - list.offsetTop;
+  if (top < list.scrollTop || top + active.offsetHeight > list.scrollTop + list.clientHeight) {
+    list.scrollTop = top - list.clientHeight / 3;
+  }
+}
+
+let timer = null;
+function delay(frame) { return frame.prompt ? 3200 : 2100; }
+function stop() {
+  clearTimeout(timer);
+  timer = null;
+  $("play").textContent = "Play";
+}
+function tick() {
+  if (current >= FRAMES.length - 1) { stop(); return; }
+  show(current + 1);
+  timer = setTimeout(tick, delay(FRAMES[current]));
+}
+function play() {
+  if (current >= FRAMES.length - 1) show(0);
+  $("play").textContent = "Pause";
+  timer = setTimeout(tick, delay(FRAMES[current]));
+}
+
+$("play").addEventListener("click", () => { timer ? stop() : play(); });
+$("back").addEventListener("click", () => { stop(); show(Math.max(0, current - 1)); });
+$("next").addEventListener("click", () => { stop(); show(Math.min(FRAMES.length - 1, current + 1)); });
+$("scrub").max = FRAMES.length - 1;
+$("scrub").addEventListener("input", (event) => { stop(); show(Number(event.target.value)); });
+
+show(0);
+if (motionOk) play();
+</script>
