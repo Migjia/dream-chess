@@ -37,7 +37,7 @@
       "items": [
         {"item": "Dry run with the debug page", "owner": "A", "state": "todo", "evidence": "Right cameras, state, and prompt; arms stay still"},
         {"item": "check_loop, run by a person at the e-stop", "owner": "A", "state": "todo", "evidence": "Every line prints PASS"},
-        {"item": "Can Dream-1 reach a named square?", "owner": "A + D", "state": "todo", "evidence": "Hits out of 10 tries on an empty board"},
+        {"item": "Dream-1 baseline eval", "owner": "Xiangwen", "state": "todo", "evidence": "eval_dream.py report shows the baseline run (24 trials)"},
         {"item": "Can it pick a pawn with neighbors?", "owner": "A + D", "state": "todo", "evidence": "Clean picks out of 10 tries"},
         {"item": "Full loop on the demo position", "owner": "All", "state": "todo", "evidence": "Game finishes correctly 3 times"},
         {"item": "Backup video", "owner": "D", "state": "todo", "evidence": "Saved somewhere safe"}

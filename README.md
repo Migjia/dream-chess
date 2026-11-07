@@ -12,6 +12,7 @@ it yourself.*
 
 - [docs/MISSION.md](docs/MISSION.md): the mission, decisions, where it runs, and how we'll know it works.
 - [docs/GAME_PLAN.md](docs/GAME_PLAN.md): who does what and the order to test in.
+- [docs/EVAL.md](docs/EVAL.md): how to test Dream-1 on chess moves and plan data collection.
 
 ## How the application works
 
@@ -22,12 +23,10 @@ and confirms the result on camera before believing it.
 
 Each turn has five stages:
 
-1. **What: pick the piece.** A chess engine scores every legal move, and each piece takes the
-   score of its best move. Among the pieces close to the top score, the app prefers one with
-   room around it, so a slightly less sharp move can beat one that risks a collision. It never
-   gives up a forced mate for an easier grip.
-2. **Where: pick the square and plan the motion.** The engine scores that piece's moves, and the
-   app prefers a destination with room around it. It then splits the move into physical steps.
+1. **What: pick the piece.** Stockfish, a chess engine, scores every legal move, and the app
+   plays its best one. What is the piece that move picks up.
+2. **Where: pick the square and plan the motion.** Where is the square that move goes to. The
+   app then splits the move into physical steps.
    A capture is two: remove the captured piece, then move yours. Each step gets a plain-English
    prompt and a record of what the board should look like afterward.
 3. **How: move the piece.** Dream-1 takes the prompt, the three camera views, and the arm
