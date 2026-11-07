@@ -12,6 +12,7 @@ it yourself.*
 
 - [docs/MISSION.md](docs/MISSION.md): the mission, decisions, where it runs, and how we'll know it works.
 - [docs/GAME_PLAN.md](docs/GAME_PLAN.md): who does what and the order to test in.
+- [docs/EVAL.md](docs/EVAL.md): how to test Dream-1 on chess moves and plan data collection.
 
 ## How the application works
 

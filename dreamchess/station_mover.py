@@ -53,8 +53,12 @@ class StationClient:
     def status(self) -> dict:
         return self._request("GET", "/status")
 
-    def start(self, prompt: str, steps: int) -> dict:
-        return self._request("POST", "/start", {"prompt": prompt, "steps": steps})
+    def start(self, prompt: str, steps: int, checkpoint: str | None = None) -> dict:
+        """Start a run. A checkpoint, such as a fine-tuned model's ID, stays in use for later runs too."""
+        body = {"prompt": prompt, "steps": steps}
+        if checkpoint:
+            body["checkpoint"] = checkpoint
+        return self._request("POST", "/start", body)
 
     def stop(self) -> dict:
         return self._request("POST", "/stop", {})
@@ -70,6 +74,7 @@ class StationMover:
         self,
         client: StationClient | None = None,
         attempt_s: float = 30.0,
+        checkpoint: str | None = None,
         poll_s: float = 0.5,
         grace_s: float = 20.0,
         log: Callable[[str], None] = print,
@@ -79,6 +84,7 @@ class StationMover:
         self.client = client or StationClient()
         self.steps = max(1, round(attempt_s * CONTROL_HZ))
         self.attempt_s = attempt_s
+        self.checkpoint = checkpoint  # None keeps the station's current model
         self.poll_s = poll_s
         self.grace_s = grace_s  # time to start up, home, and answer, beyond the run itself
         self.log = log
@@ -108,7 +114,7 @@ class StationMover:
         if dead:
             raise StationError(f"station reports a dead arm driver: {', '.join(dead)}")
 
-        self.client.start(step.prompt, self.steps)
+        self.client.start(step.prompt, self.steps, self.checkpoint)
         after = self._wait_until_settled(self.attempt_s + self.grace_s)
         if after.get("state") in BUSY:
             # The run should have ended by now, so stop it rather than let it keep going.
