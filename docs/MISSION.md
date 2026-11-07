@@ -68,7 +68,7 @@ show that our code is correct, not that the robot can do this.
 | Question | Evidence | Status |
 | --- | --- | --- |
 | Is the chess and retry logic right? | Tests pass | Passing in simulation |
-| Do What and Where work on real Stockfish? | `tests/test_stockfish.py` passes, not skipped | Not run yet |
+| Do What and Where work on real Stockfish? | `tests/test_stockfish.py` passes, not skipped | Passed on GitHub ([run](https://github.com/aballal-source/dream-chess/actions/runs/42413389011)); not yet on the NUC |
 | Can the camera read the real board? | `vision_tool.py check` gets all 64 squares right | Not run yet |
 | Are the model's inputs right? | The dry run's debug page shows correct cameras, state, and prompt | Not run yet |
 | Does the control loop work? | A person at the e-stop gets all PASS lines from `check_loop` | Not run yet |

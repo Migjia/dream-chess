@@ -83,8 +83,9 @@ or set `STOCKFISH_PATH`.
 
 ## Status
 
-Tested in simulation only. `dream_mover.py` has only run against a fake client, the camera code
-has only seen simulated images, and the Stockfish path has never run.
+Nothing has run on the robot yet. What and Where pass on real Stockfish in the GitHub tests, but
+`dream_mover.py` has only run against a fake client, and the camera code has only seen simulated
+images.
 
 ## Safety
 

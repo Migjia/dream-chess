@@ -4,8 +4,8 @@
     {
       "name": "Built and tested in simulation",
       "items": [
-        {"item": "What: pick the piece", "owner": "C", "state": "simulated", "evidence": "Tests pass with the built-in engine"},
-        {"item": "Where: pick the square and plan steps", "owner": "C", "state": "simulated", "evidence": "Tests pass with the built-in engine"},
+        {"item": "What: pick the piece", "owner": "C", "state": "simulated", "evidence": "Passes on real Stockfish; not yet used on the robot"},
+        {"item": "Where: pick the square and plan steps", "owner": "C", "state": "simulated", "evidence": "Passes on real Stockfish; not yet used on the robot"},
         {"item": "Orchestrator: retry, recover, ask a person", "owner": "C", "state": "simulated", "evidence": "Full games stay in sync against a failing mock robot"},
         {"item": "Check: top-camera code", "owner": "B", "state": "simulated", "evidence": "Reads a simulated camera, not yet a real one"},
         {"item": "How: Dream-1 connection", "owner": "A", "state": "simulated", "evidence": "Runs against a fake client, not yet the real API"},
@@ -17,7 +17,7 @@
       "name": "Team setup",
       "items": [
         {"item": "Teammates invited and roles claimed", "owner": "All", "state": "todo", "evidence": "Each person has pushed a branch"},
-        {"item": "What and Where on real Stockfish", "owner": "C", "state": "todo", "evidence": "tests/test_stockfish.py shows 10 passed, not skipped"},
+        {"item": "What and Where on real Stockfish", "owner": "C", "state": "done", "evidence": "10 passed on GitHub with real Stockfish; not yet run on the NUC"},
         {"item": "Choose the demo position", "owner": "C", "state": "todo", "evidence": "A short mate with room around the pieces"}
       ]
     },
