@@ -60,7 +60,11 @@ python run_game.py --fen "6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1"
 python vision_tool.py calibrate --synthetic --yes
 python vision_tool.py check --synthetic
 python visualize.py                  # rebuild the simulation in docs/
+python dev_server.py                 # live dashboard at http://127.0.0.1:8765
 ```
+
+The dashboard replays the simulation and re-runs the tests whenever code changes, and tracks
+what's left. Update its progress list in `docs/status.json` as work finishes.
 
 Games use a weak built-in engine unless you install Stockfish and pass `--stockfish <path>`
 or set `STOCKFISH_PATH`.

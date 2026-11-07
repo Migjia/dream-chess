@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dream Chess Live</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;700&family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400&display=swap">
+<style>
+/* Layout: a status strip across the top, the live simulation as the main view, and the remaining work beside it. */
+:root {
+  color-scheme: light;
+  --ground: #eef1ea; --surface: #fbfcf8; --ink: #1c2a24; --quiet: #55655c; --rule: #cdd6cc;
+  --accent: #1f6b4c; --bad: #a83a26; --sim: #8a6a12; --sim-soft: #f3e8c6; --todo-soft: #e2e6df; --done-soft: #d8eadf;
+  --display: "Familjen Grotesk", "Segoe UI", system-ui, sans-serif;
+  --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", Consolas, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --ground: #141b18; --surface: #1d2622; --ink: #e8eee8; --quiet: #a3b1a8; --rule: #34423b;
+    --accent: #6fce9f; --bad: #f0917c; --sim: #e3c063; --sim-soft: #40361a; --todo-soft: #2a332e; --done-soft: #23402f;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--ground); color: var(--ink); font: 15px/1.45 var(--body); }
+.page { max-width: 1560px; margin: 0 auto; padding: 20px max(16px, 2vw) 40px; display: grid; gap: 16px; }
+h1 { margin: 0; font: 700 26px/1.15 var(--display); }
+h2 { margin: 0; font: 700 18px/1.25 var(--display); }
+.strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
+.tile { background: var(--surface); border: 1px solid var(--rule); border-radius: 4px; padding: 10px 12px; min-width: 0; }
+.tile small { display: block; color: var(--quiet); font-size: 13px; }
+.tile strong { display: block; font: 700 18px/1.3 var(--display); overflow-wrap: anywhere; }
+.tile span { display: block; color: var(--quiet); font-size: 13px; overflow-wrap: anywhere; }
+.good { color: var(--accent); } .bad { color: var(--bad); } .busy { color: var(--sim); }
+.main { display: grid; grid-template-columns: minmax(0, 7fr) minmax(320px, 4fr); gap: 16px; align-items: start; }
+@media (max-width: 1100px) { .main { grid-template-columns: minmax(0, 1fr); } }
+iframe { width: 100%; height: 1120px; border: 1px solid var(--rule); border-radius: 4px; background: var(--ground); display: block; }
+.side { display: grid; gap: 14px; min-width: 0; }
+.bar { display: flex; height: 14px; border-radius: 3px; overflow: hidden; background: var(--todo-soft); }
+.bar i { display: block; height: 100%; transition: width .4s; }
+.bar .d { background: var(--accent); } .bar .s { background: var(--sim); }
+.key { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--quiet); }
+.group { display: grid; gap: 6px; }
+.group h3 { margin: 0; font: 700 15px var(--display); }
+ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.item { display: grid; grid-template-columns: 76px minmax(0, 1fr) auto; gap: 8px; align-items: baseline; padding: 6px 8px; background: var(--surface); border: 1px solid var(--rule); border-radius: 4px; }
+.pill { font: 12px var(--mono); padding: 1px 4px; border-radius: 3px; text-align: center; }
+.pill.done { background: var(--done-soft); color: var(--accent); }
+.pill.simulated { background: var(--sim-soft); color: var(--sim); }
+.pill.todo { background: var(--todo-soft); color: var(--quiet); }
+.item small { display: block; color: var(--quiet); font-size: 13px; }
+.owner { color: var(--quiet); font: 12px var(--mono); white-space: nowrap; }
+.errors { margin: 0; padding: 10px 12px; background: var(--surface); border: 1px solid var(--bad); border-radius: 4px; color: var(--bad); font: 13px var(--mono); overflow-x: auto; white-space: pre-wrap; }
+.branch { display: flex; justify-content: space-between; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--rule); font-size: 14px; }
+.branch code { font: 13px var(--mono); overflow-wrap: anywhere; }
+[hidden] { display: none !important; }
+</style>
+
+<div class="page">
+  <h1>Dream Chess live</h1>
+
+  <section class="strip" aria-label="Current state">
+    <div class="tile"><small>Tests</small><strong id="tests">Checking</strong><span id="testsDetail"></span></div>
+    <div class="tile"><small>Simulation</small><strong id="sim">Checking</strong><span id="simDetail"></span></div>
+    <div class="tile"><small>Branch</small><strong id="branch">Checking</strong><span id="commit"></span></div>
+    <div class="tile"><small>Connection to this server</small><strong id="link">Checking</strong><span>Updates by itself</span></div>
+  </section>
+
+  <pre class="errors" id="errors" hidden></pre>
+
+  <section class="main">
+    <iframe id="frame" title="Simulation of the agent playing chess" src="/simulation"></iframe>
+    <div class="side">
+      <div class="group">
+        <h2>Where we are</h2>
+        <div class="bar" role="img" id="bar" aria-label="Progress"><i class="d" id="barDone"></i><i class="s" id="barSim"></i></div>
+        <div class="key" id="key"></div>
+      </div>
+      <div id="groups" class="side"></div>
+      <div class="group">
+        <h2>Branches on GitHub</h2>
+        <div id="branches"></div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let lastSim = null;
+let lastProgress = "";
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function drawProgress(progress) {
+  const key = JSON.stringify(progress);
+  if (key === lastProgress) return;
+  lastProgress = key;
+  const counts = progress.counts || {};
+  const total = (counts.done || 0) + (counts.simulated || 0) + (counts.todo || 0);
+  $("barDone").style.width = total ? (counts.done || 0) / total * 100 + "%" : "0";
+  $("barSim").style.width = total ? (counts.simulated || 0) / total * 100 + "%" : "0";
+  $("bar").setAttribute("aria-label", `${counts.done || 0} done, ${counts.simulated || 0} simulation only, ${counts.todo || 0} to do`);
+  $("key").textContent = `${counts.done || 0} done · ${counts.simulated || 0} simulation only · ${counts.todo || 0} to do`;
+
+  const groups = $("groups");
+  groups.replaceChildren();
+  if (progress.error) groups.append(el("p", "bad", progress.error));
+  for (const group of progress.groups) {
+    const box = el("div", "group");
+    box.append(el("h3", "", group.name));
+    const list = el("ul");
+    for (const item of group.items) {
+      const row = el("li", "item");
+      const words = { done: "done", simulated: "sim only", todo: "to do" };
+      row.append(el("span", "pill " + item.state, words[item.state] || item.state));
+      const body = el("div");
+      body.append(el("span", "", item.item), el("small", "", item.evidence));
+      row.append(body, el("span", "owner", item.owner));
+      list.append(row);
+    }
+    box.append(list);
+    groups.append(box);
+  }
+}
+
+function draw(state) {
+  const tests = state.tests;
+  const words = { passed: "Passing", failed: "Failing", running: "Running", waiting: "Waiting" };
+  const tones = { passed: "good", failed: "bad", running: "busy", waiting: "busy" };
+  $("tests").textContent = words[tests.state];
+  $("tests").className = tones[tests.state];
+  $("testsDetail").textContent = tests.summary + (tests.finished ? ` at ${tests.finished}` : "");
+
+  $("sim").textContent = state.simError ? "Failing" : "Working";
+  $("sim").className = state.simError ? "bad" : "good";
+  $("simDetail").textContent = state.simError ? "Showing the last good version" : `${state.simSteps} steps, rebuild ${state.simVersion}`;
+
+  const problems = [];
+  if (state.simError) problems.push("Simulation: " + state.simError);
+  if (tests.state === "failed" && tests.failures.length) problems.push("Failing tests:\n" + tests.failures.join("\n"));
+  $("errors").textContent = problems.join("\n\n");
+  $("errors").hidden = !problems.length;
+
+  const git = state.git;
+  $("branch").textContent = git.branch || "Unknown";
+  $("commit").textContent = (git.commit || "") + (git.uncommitted ? ` (${git.uncommitted} uncommitted)` : "");
+
+  drawProgress(state.progress);
+
+  $("branches").replaceChildren(...git.branches.map((branch) => {
+    const row = el("div", "branch");
+    row.append(el("code", "", branch.name), el("span", branch.merged ? "good" : "busy", branch.merged ? "merged" : "not merged"));
+    return row;
+  }));
+
+  if (lastSim !== null && state.simVersion !== lastSim) $("frame").src = "/simulation?v=" + state.simVersion;
+  lastSim = state.simVersion;
+}
+
+async function poll() {
+  try {
+    const response = await fetch("/state.json", { cache: "no-store" });
+    draw(await response.json());
+    $("link").textContent = "Connected";
+    $("link").className = "good";
+  } catch {
+    $("link").textContent = "Lost";
+    $("link").className = "bad";
+  }
+  setTimeout(poll, 2000);
+}
+poll();
+</script>
