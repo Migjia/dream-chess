@@ -75,7 +75,8 @@ or set `STOCKFISH_PATH`.
 | --- | --- | --- |
 | What | `dreamchess/what.py` | Scores every legal move and picks the piece |
 | Where | `dreamchess/where.py` | Picks the square, splits the move into steps, and writes the prompts |
-| How | `dreamchess/dream_mover.py` | Plays Dream-1's actions on the arms |
+| How | `dreamchess/station_mover.py` | Sends each prompt to the station's local API, which runs Dream-1 |
+| How (fallback) | `dreamchess/dream_mover.py` | Plays Dream-1's actions on the arms directly |
 | Check | `dreamchess/vision.py` | Reads the board from the top camera |
 | Orchestrator | `dreamchess/orchestrator.py` | Runs the loop, retries, and asks a person for help |
 | Simulation | `dreamchess/mock.py`, `dreamchess/synth.py` | A failing robot and a simulated camera |
