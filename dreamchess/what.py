@@ -1,8 +1,9 @@
 """WHAT: choose which piece to move.
 
 A piece's value depends on where it could go, so every legal move gets scored and
-each piece takes the score of its best move. Among pieces within `margin_cp` of the
-top score, this prefers the one with the most room around it: a slightly less sharp
+each piece takes the score of its best move. By default it plays Stockfish's move. With a
+`margin_cp` above 0, it may pick a piece with more room around it among those within that
+margin of the top score, trading a little strength for easier handling: a slightly less sharp
 move that the gripper can execute beats a perfect move that knocks over a neighbor.
 """
 from __future__ import annotations
@@ -45,7 +46,7 @@ def within_margin(score: int, best: int, margin_cp: int) -> bool:
     return score >= best - margin_cp
 
 
-def choose_piece(board: chess.Board, engine: Engine, margin_cp: int = 30) -> PieceChoice:
+def choose_piece(board: chess.Board, engine: Engine, margin_cp: int = 0) -> PieceChoice:
     ranked: list[ScoredMove] = engine.rank(board, candidate_moves(board))
     if not ranked:
         raise ValueError("no legal moves")

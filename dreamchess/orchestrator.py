@@ -27,7 +27,7 @@ class Config:
     max_attempts: int = 6  # Dream-1 tries per goal before asking a person
     max_human_calls: int = 2  # per goal
     frames_per_observation: int = 3
-    margin_cp: int = 30  # chess strength to trade for easier handling
+    margin_cp: int = 0  # 0 always plays Stockfish's move; above 0 trades strength for easier handling
     max_opponent_reads: int = 3
     # More wrong squares than this means a bumped board or an arm in view, so don't let the
     # robot "fix" it. Ordinary failures only touch a few squares.

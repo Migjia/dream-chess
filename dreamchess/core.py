@@ -62,5 +62,9 @@ def color_code(color: chess.Color) -> str:
     return "w" if color == chess.WHITE else "b"
 
 
+# What each side's pieces look like on this board, since Dream-1 matches the words to what it sees.
+COLOR_WORDS = {"w": "white", "b": "brown"}
+
+
 def color_word(code: str) -> str:
-    return "white" if code == "w" else "black"
+    return COLOR_WORDS[code]

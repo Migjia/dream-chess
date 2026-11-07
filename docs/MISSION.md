@@ -54,7 +54,7 @@ judges follow along, but build it only after the full loop works.
 | What and Where share one set of engine scores | A piece is only as good as its best destination | Never: it follows from the rules of chess |
 | Stockfish for chess decisions | It's free, strong, runs on a CPU, and can score every legal move | The NUC can't run it |
 | No LLM for chess or safety decisions | Plain code is faster, testable, and can't invent an illegal move | An LLM is optional later for commentary or unusual recoveries |
-| Accept up to 0.3 pawns worse for an easier move, never giving up a forced mate | Being delicate matters more than a perfect move, within limits | Tune the margin once we've seen real failures |
+| Always play Stockfish's move | The robot should play like a strong bot; the rest of the app exists to carry the move out | A margin setting can trade strength for easier moves, but it's off |
 | Update the board only after the camera confirms | The program can never believe a move happened when it didn't | Never |
 | Depth camera for the check, with color as a fallback | Depth keeps tall pieces on their own square when the camera is at an angle | Depth is too noisy to see pawns |
 | Demo a short mate from a sparse board | Sparse boards give the gripper room, and moves could take minutes each | Testing shows full games are practical |

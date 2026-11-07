@@ -24,7 +24,7 @@ class Destination:
 
 
 def choose_destination(
-    board: chess.Board, engine: Engine, choice: PieceChoice, margin_cp: int = 30
+    board: chess.Board, engine: Engine, choice: PieceChoice, margin_cp: int = 0
 ) -> Destination:
     moves = [m for m in candidate_moves(board) if m.from_square == choice.square]
     ranked = engine.rank(board, moves)
@@ -51,11 +51,12 @@ def arm_for(square: str, robot_color: chess.Color) -> str:
 def write_prompt(arm: str, color: str, piece_name: str, source: str, target: str) -> str:
     """The text Dream-1 receives. Tune this wording on the real robot first."""
     item = f"{color_word(color)} {piece_name}".strip()
+    # There's a tray beside each arm, so each arm uses the one on its own side.
     if source == TRAY:
-        pick = f"pick up the spare {item} from the tray"
+        pick = f"pick up the spare {item} from the tray on your {arm}"
     else:
         pick = f"pick up the {item} on square {source}"
-    place = "put it in the tray" if target == TRAY else f"place it upright in the center of square {target}"
+    place = f"put it in the tray on your {arm}" if target == TRAY else f"place it upright in the center of square {target}"
     return f"Using your {arm} arm, {pick} and {place}. Move slowly and do not touch any other piece."
 
 

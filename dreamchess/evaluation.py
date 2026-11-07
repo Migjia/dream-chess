@@ -1,10 +1,10 @@
-"""A repeatable test of Dream-1 on single chess moves, to compare models and prompt wordings.
+"""A repeatable test of Dream-1 on single chess moves, to compare models and setups.
 
-Each trial is one pick-and-place, set up by hand and scored by the person watching. The named
-wording comes straight from the app's own prompt writer (`where.write_prompt`), so the results
-apply to the prompts the agent really sends.
+Each trial is one pick-and-place, set up by hand and scored by the person watching. Every
+prompt comes straight from the app's own prompt writer (`where.write_prompt`), so the results
+apply to the prompts the agent really sends, including its fix prompts after a failure.
 
-Assumes the board sits with White's side nearest the robot, a1 at the robot's left.
+The robot plays Brown (Black), so it sits behind the 8th rank, with the h-file at its left.
 """
 from __future__ import annotations
 
@@ -18,37 +18,46 @@ import chess
 from .core import TRAY, Step, color_word
 from .where import arm_for, write_prompt
 
+ROBOT = chess.BLACK
+WORDINGS = ("named",)  # square names, exactly as the app sends them
+
 
 @dataclass(frozen=True)
 class Task:
     id: str
     title: str
-    color: str  # "w" or "b"
-    piece: str
+    color: str  # "b" for the robot's brown pieces, "w" for the opponent's
+    piece: str  # the word the prompt uses; "piece" for the app's fix prompts
     source: str
     target: str  # a square, or TRAY
     tags: tuple[str, ...]
     neighbors: tuple[tuple[str, str, str], ...] = ()  # (color, piece, square) placed around it
+    setup_piece: str = ""  # the real piece to place, when the prompt only says "piece"
 
 
-W, B = "w", "b"
+B, W = "b", "w"
 TASKS = [
-    Task("t01", "Short knight hop, left arm", W, "knight", "b1", "c3", ("near", "left-arm", "knight")),
-    Task("t02", "Short knight hop, right arm", W, "knight", "g1", "f3", ("near", "right-arm", "knight")),
-    Task("t03", "Pawn push", W, "pawn", "e2", "e4", ("near", "right-arm", "pawn")),
-    Task("t04", "Long reach, left arm", W, "rook", "a1", "a6", ("far", "left-arm", "rook")),
-    Task("t05", "Long reach, right arm", W, "rook", "h1", "h6", ("far", "right-arm", "rook")),
-    Task("t06", "Long diagonal across the board", W, "bishop", "c1", "h6", ("far", "left-arm", "bishop", "cross-board")),
-    Task("t07", "To the center", W, "queen", "d1", "d5", ("mid", "left-arm", "queen")),
-    Task("t08", "Tallest piece, one square", W, "king", "e1", "e2", ("near", "right-arm", "king", "tall")),
-    Task("t09", "Pick from between neighbors", W, "pawn", "e2", "e4", ("near", "right-arm", "pawn", "crowded"),
-         ((W, "pawn", "d2"), (W, "pawn", "f2"))),
-    Task("t10", "Place between neighbors", W, "bishop", "f1", "e3", ("near", "right-arm", "bishop", "crowded"),
-         ((W, "pawn", "d3"), (W, "pawn", "f3"))),
-    Task("t11", "Capture: remove a piece to the tray", B, "pawn", "d5", TRAY, ("mid", "left-arm", "pawn", "tray")),
-    Task("t12", "Black piece on the far side", B, "queen", "d8", "d6", ("far", "left-arm", "queen", "black-piece")),
+    Task("t01", "Short knight hop, left arm", B, "knight", "g8", "f6", ("near", "left-arm", "knight")),
+    Task("t02", "Short knight hop, right arm", B, "knight", "b8", "c6", ("near", "right-arm", "knight")),
+    Task("t03", "Pawn push", B, "pawn", "e7", "e5", ("near", "left-arm", "pawn")),
+    Task("t04", "Long reach, left arm", B, "rook", "h8", "h3", ("far", "left-arm", "rook")),
+    Task("t05", "Long reach, right arm", B, "rook", "a8", "a3", ("far", "right-arm", "rook")),
+    Task("t06", "Long diagonal across the board", B, "bishop", "f8", "a3", ("far", "left-arm", "bishop", "cross-board")),
+    Task("t07", "To the center", B, "queen", "d8", "d4", ("mid", "right-arm", "queen")),
+    Task("t08", "Tallest piece, one square", B, "king", "e8", "e7", ("near", "left-arm", "king", "tall")),
+    Task("t09", "Pick from between neighbors", B, "pawn", "d7", "d5", ("near", "right-arm", "pawn", "crowded"),
+         ((B, "pawn", "c7"), (B, "pawn", "e7"))),
+    Task("t10", "Place between neighbors", B, "bishop", "c8", "d6", ("near", "right-arm", "bishop", "crowded"),
+         ((B, "pawn", "c6"), (B, "pawn", "e6"))),
+    Task("t11", "Capture: opponent piece to the left tray", W, "pawn", "e5", TRAY,
+         ("mid", "left-arm", "pawn", "tray", "opponent-piece")),
+    Task("t12", "Capture: opponent piece to the right tray", W, "knight", "c4", TRAY,
+         ("mid", "right-arm", "knight", "tray", "opponent-piece")),
+    Task("t13", "Fix: own piece on the wrong square", B, "piece", "g6", "f6", ("near", "left-arm", "recovery"),
+         setup_piece="knight"),
+    Task("t14", "Fix: put back a bumped opponent piece", W, "piece", "e3", "e4",
+         ("mid", "left-arm", "recovery", "opponent-piece"), ((B, "knight", "f5"),), setup_piece="pawn"),
 ]
-WORDINGS = ("named", "relative")
 
 OUTCOMES = {
     "s": ("success", "Right square, upright, nothing else moved"),
@@ -56,62 +65,40 @@ OUTCOMES = {
     "m": ("missed", "Never picked it up"),
     "d": ("dropped", "Dropped it, knocked it over, or it fell off the board"),
     "n": ("disturbed", "Moved the piece but bumped another piece out of place"),
+    "t": ("timed_out", "Was still moving when the time limit ended"),
     "x": ("no_motion", "The arms didn't really try, or the station reported an error"),
     "e": ("stopped", "A person stopped it for safety"),
 }
 
 
 def _arm(task: Task) -> str:
-    return arm_for(task.target if task.source == TRAY else task.source, chess.WHITE)
+    return arm_for(task.target if task.source == TRAY else task.source, ROBOT)
 
 
-def _squares(count: int) -> str:
-    return f"{count} square" + ("" if count == 1 else "s")
+def prompt_for(task: Task, wording: str = "named") -> str:
+    if wording != "named":
+        raise ValueError(f"unknown wording {wording!r}; choose from {WORDINGS}")
+    return write_prompt(_arm(task), task.color, task.piece, task.source, task.target)
 
 
-def relative_prompt(task: Task) -> str:
-    """The same move, described by direction and distance, for a camera that can't read square names."""
-    item = f"the {color_word(task.color)} {task.piece}"
-    if task.target == TRAY:
-        return (f"Using your {_arm(task)} arm, pick up {item} and put it in the tray. "
-                "Move slowly and do not touch any other piece.")
-    forward = int(task.target[1]) - int(task.source[1])
-    across = ord(task.target[0]) - ord(task.source[0])
-    parts = []
-    if forward:
-        parts.append(f"{_squares(abs(forward))} {'away from you' if forward > 0 else 'toward you'}")
-    if across:
-        parts.append(f"{_squares(abs(across))} to your {'right' if across > 0 else 'left'}")
-    return (f"Using your {_arm(task)} arm, pick up {item} and move it {' and '.join(parts)}. "
-            "Set it down upright in the center of that square, moving slowly and touching no other piece.")
-
-
-def prompt_for(task: Task, wording: str) -> str:
-    if wording == "named":
-        return write_prompt(_arm(task), task.color, task.piece, task.source, task.target)
-    if wording == "relative":
-        return relative_prompt(task)
-    raise ValueError(f"unknown wording {wording!r}; choose from {WORDINGS}")
-
-
-def step_for(task: Task, wording: str) -> Step:
+def step_for(task: Task, wording: str = "named") -> Step:
     return Step(task.color, task.piece, task.source, task.target, _arm(task), prompt_for(task, wording), {})
 
 
 def setup_text(task: Task) -> str:
-    placed = [(task.color, task.piece, task.source)] + list(task.neighbors)
+    placed = [(task.color, task.setup_piece or task.piece, task.source)] + list(task.neighbors)
     pieces = ", ".join(f"{color_word(c)} {p} on {sq}" for c, p, sq in placed)
-    tray = " Put an empty tray where the robot can reach it." if task.target == TRAY else ""
+    tray = f" Check the tray on the robot's {_arm(task)} is empty." if task.target == TRAY else ""
     return f"Clear the board, then place: {pieces}.{tray}"
 
 
 def trial_plan(tasks: list[Task], wordings: list[str], repeat: int) -> list[tuple[int, Task, str]]:
-    """Alternate wordings within each task, so neither always goes first."""
+    """Every task once per round, with the order reversed on alternate rounds."""
     plan = []
     for rep in range(repeat):
-        for index, task in enumerate(tasks):
-            order = wordings if (index + rep) % 2 == 0 else list(reversed(wordings))
-            plan.extend((rep + 1, task, wording) for wording in order)
+        ordered = tasks if rep % 2 == 0 else list(reversed(tasks))
+        for task in ordered:
+            plan.extend((rep + 1, task, wording) for wording in wordings)
     return plan
 
 
@@ -136,20 +123,20 @@ def _rate(entries: list[dict]) -> str:
 
 
 def report(results: list[dict]) -> str:
-    """Markdown tables comparing each label, by wording, by kind of move, and by failure."""
+    """Markdown tables comparing each run, by kind of move and by what went wrong."""
     if not results:
         return "No results yet."
     by_label: dict[str, list[dict]] = defaultdict(list)
     for entry in results:
         by_label[entry["label"]].append(entry)
     labels = list(by_label)  # in the order they were run, so the last is the newest
-    lines = ["## Success rate", "", "| Run | Checkpoint | All | " + " | ".join(w.title() for w in WORDINGS) + " |",
-             "| --- | --- | --- | " + " | ".join("---" for _ in WORDINGS) + " |"]
+
+    lines = ["## Success rate", "", "| Run | Checkpoint | Setup | Success |", "| --- | --- | --- | --- |"]
     for label in labels:
         entries = by_label[label]
-        checkpoints = sorted({e.get("checkpoint") or "unknown" for e in entries})
-        cells = [_rate([e for e in entries if e["wording"] == w]) for w in WORDINGS]
-        lines.append(f"| {label} | {', '.join(checkpoints)} | {_rate(entries)} | " + " | ".join(cells) + " |")
+        checkpoints = ", ".join(sorted({e.get("checkpoint") or "unknown" for e in entries}))
+        setups = "; ".join(sorted({e.get("setup") or "not recorded" for e in entries}))
+        lines.append(f"| {label} | {checkpoints} | {setups} | {_rate(entries)} |")
 
     tags = sorted({tag for e in results for tag in e["tags"]})
     lines += ["", "## By kind of move", "", "| Kind | " + " | ".join(labels) + " |",
@@ -157,19 +144,21 @@ def report(results: list[dict]) -> str:
     for tag in tags:
         lines.append(f"| {tag} | " + " | ".join(_rate([e for e in by_label[l] if tag in e["tags"]]) for l in labels) + " |")
 
-    names = [name for name, _ in OUTCOMES.values()]
     lines += ["", "## What went wrong", "", "| Outcome | " + " | ".join(labels) + " |",
               "| --- | " + " | ".join("---" for _ in labels) + " |"]
-    for name in names:
+    for name, _ in OUTCOMES.values():
         counts = [str(Counter(e["outcome"] for e in by_label[l])[name]) for l in labels]
         lines.append(f"| {name} | " + " | ".join(counts) + " |")
 
     latest = by_label[labels[-1]]
-    weak = [t for t in tags if (lambda es: es and sum(e["outcome"] == "success" for e in es) / len(es) < 0.5)(
-        [e for e in latest if t in e["tags"]])]
+
+    def weak(tag: str) -> bool:
+        entries = [e for e in latest if tag in e["tags"]]
+        return bool(entries) and sum(e["outcome"] == "success" for e in entries) / len(entries) < 0.5
+
     lines += ["", f"## Where to focus data collection ({labels[-1]})", ""]
-    lines.append("Kinds of move succeeding under half the time: " + (", ".join(weak) if weak else "none") + ".")
+    lines.append("Kinds of move succeeding under half the time: " + (", ".join(t for t in tags if weak(t)) or "none") + ".")
     smallest = min(len(by_label[l]) for l in labels)
-    if smallest < 20:
-        lines.append(f"\nWith only {smallest} trials in a run, a difference of one or two successes may be chance.")
+    if smallest < 30:
+        lines.append(f"\nWith only {smallest} trials in a run, a difference of a few successes may be chance.")
     return "\n".join(lines)

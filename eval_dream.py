@@ -48,6 +48,8 @@ def cmd_run(args, ask=input, say=print, client: StationClient | None = None) -> 
     done = {trial_key(e) for e in load_results([out])} if out.exists() else set()
     remaining = [p for p in plan if (args.label, p[1].id, p[2], p[0]) not in done]
     say(f"{len(remaining)} of {len(plan)} trials to run for '{args.label}'; results go to {out}")
+    if not args.setup:
+        say('Tip: describe the setup with --setup, such as "edge labels: yes", so runs compare fairly.')
 
     mover = None
     if not args.manual:
@@ -92,7 +94,7 @@ def cmd_run(args, ask=input, say=print, client: StationClient | None = None) -> 
         entry = {
             "label": args.label, "checkpoint": checkpoint, "task": task.id, "title": task.title,
             "tags": list(task.tags), "wording": wording, "repeat": rep, "prompt": step.prompt,
-            "outcome": outcome, "seconds": seconds, "error": error, "manual": bool(args.manual),
+            "outcome": outcome, "seconds": seconds, "error": error, "manual": bool(args.manual), "setup": args.setup,
             "notes": ask("  Notes (optional): ").strip(),
             "time": datetime.datetime.now().isoformat(timespec="seconds"),
         }
@@ -117,7 +119,8 @@ def main() -> None:
     run.add_argument("--wording", nargs="+", default=list(WORDINGS), choices=WORDINGS)
     run.add_argument("--tasks", nargs="+", default=[], help="only these task IDs, such as t01 t03")
     run.add_argument("--skip-tag", nargs="+", default=[], help="leave out tasks with these tags, such as tray")
-    run.add_argument("--repeat", type=int, default=1)
+    run.add_argument("--repeat", type=int, default=2, help="rounds of every task")
+    run.add_argument("--setup", default="", help='what this run used, such as "edge labels: yes"')
     run.add_argument("--seconds", type=float, default=30.0, help="time limit per attempt")
     run.add_argument("--out", default=str(RESULTS))
 
