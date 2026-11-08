@@ -79,11 +79,6 @@ def play(args, ask=input, say=print, client=None, clock=time.monotonic) -> dict:
     board = chess.Board(args.fen)
     label = args.label or datetime.datetime.now().strftime("game-%Y%m%d-%H%M%S")
     log = GameLog(Path(args.log_dir) / f"{label}.jsonl")
-    engine = make_engine(args.stockfish)
-    say(f"Chess engine: {engine.name}")
-    if engine.name != "stockfish":
-        say("WARNING: Stockfish isn't installed, so the robot will play a much weaker built-in engine.")
-
     if args.sim:
         from dreamchess.mock import MockDream, MockHuman, MockPerception, SimWorld
 
@@ -114,13 +109,24 @@ def play(args, ask=input, say=print, client=None, clock=time.monotonic) -> dict:
         opponent = TerminalOpponent(ask, say, on_move=eyes.opponent_moved, record=log)
         stop_arms = client.stop
 
+    # Start the engine only once every check has passed. Stockfish runs as a separate program, so
+    # an engine started and then abandoned by a refusal would keep this program from exiting.
+    engine = make_engine(args.stockfish)
+    say(f"Chess engine: {engine.name}")
+    if engine.name != "stockfish":
+        say("WARNING: Stockfish isn't installed, so the robot will play a much weaker built-in engine.")
+
     def narrate(line: str) -> None:
         say(plain(line))
         log({"type": "agent", "text": line})
 
     # The person answers once per check, so there's nothing to vote across.
     config = Config(frames_per_observation=1 if eyes is not None else 3)
-    agent = Orchestrator(board, ROBOT, engine, mover, perception, human, opponent, config=config, log=narrate)
+    try:
+        agent = Orchestrator(board, ROBOT, engine, mover, perception, human, opponent, config=config, log=narrate)
+    except Exception:
+        engine.close()
+        raise
     log({"type": "game_start", "fen": board.fen(), "robot": "brown", "engine": engine.name,
          "sim": bool(args.sim), "checkpoint": args.checkpoint, "seconds_per_attempt": args.seconds})
 

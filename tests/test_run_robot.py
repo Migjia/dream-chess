@@ -181,3 +181,44 @@ def test_setup_lists_every_piece_in_plain_words():
 ])
 def test_agent_lines_are_shown_in_plain_words(line, expected):
     assert run_robot.plain(line) == expected
+
+
+class TrackedEngine:
+    """Stands in for Stockfish, recording whether it was closed."""
+
+    name = "stockfish"
+    started = []
+
+    def __init__(self, *args):
+        from dreamchess.engine import FallbackEngine
+
+        self.inner, self.closed = FallbackEngine(), False
+        TrackedEngine.started.append(self)
+
+    def rank(self, board, moves):
+        return self.inner.rank(board, moves)
+
+    def close(self):
+        self.closed = True
+
+
+@pytest.fixture
+def tracked(monkeypatch):
+    TrackedEngine.started = []
+    monkeypatch.setattr(run_robot, "make_engine", TrackedEngine)
+    return TrackedEngine.started
+
+
+def test_refusing_to_start_leaves_no_engine_running(station, tmp_path, quick, tracked):  # noqa: F811
+    with pytest.raises(SystemExit):
+        run_robot.play(args(tmp_path), ask=scripted("", "no"), say=lambda _: None, client=client_for(station))
+    station.state = "running"
+    with pytest.raises(SystemExit):
+        run_robot.play(args(tmp_path), ask=scripted(), say=lambda _: None, client=client_for(station))
+    assert all(engine.closed for engine in tracked)
+
+
+@pytest.mark.parametrize("answers", [("", "yes", "Kg1", "y", ""), ("", "yes", "quit")], ids=["mate", "quit"])
+def test_every_finished_game_closes_the_engine(station, tmp_path, quick, tracked, answers):  # noqa: F811
+    run_robot.play(args(tmp_path), ask=scripted(*answers), say=lambda _: None, client=client_for(station))
+    assert tracked and all(engine.closed for engine in tracked)
