@@ -24,10 +24,12 @@ class FakeStation:
     and it moves at once"), and the next run moves at once. `never_answers` is a model that never starts."""
 
     def __init__(self, run_s=0.15, home_s=0.1, fail_run=False, never_ends=False, warm_s=0.0, move_after_s=0.3,
-                 never_answers=False):
+                 never_answers=False, stall_s=0.0):
         self.run_s, self.home_s = run_s, home_s
         self.fail_run, self.never_ends = fail_run, never_ends
         self.warm_s, self.move_after_s, self.never_answers = warm_s, move_after_s, never_answers
+        self.stall_s = stall_s  # after the first action, how long DreamAPI is too slow and the arms hold
+        self.stalls = 0
         self.chunks = 0
         self.state = "idle"
         self.last_error = None
@@ -40,7 +42,7 @@ class FakeStation:
     def status(self):
         with self.lock:
             return {"state": self.state, "run": self.run, "last_error": self.last_error, "arms": dict(self.arms),
-                    "chunks": self.chunks}
+                    "chunks": self.chunks, "stalls": self.stalls}
 
     def _later(self, seconds, action):
         def go():
@@ -83,6 +85,14 @@ class FakeStation:
         with self.lock:
             if self.state == "running":
                 self.chunks = 1
+        if self.stall_s:
+            def stall():
+                end = time.time() + self.stall_s
+                while time.time() < end and not self._cancel.is_set():
+                    with self.lock:
+                        self.stalls += 1
+                    time.sleep(0.01)
+            threading.Thread(target=stall, daemon=True).start()
 
     def stop(self):
         self._cancel.set()
@@ -270,3 +280,16 @@ def test_a_model_that_never_answers_is_stopped_and_reported(station):
     with pytest.raises(StationError, match="never moved"):
         m.execute(STEP)
     assert len(posts(station, "/stop")) == 2  # each run stopped once its wait for an answer ran out
+
+
+def test_time_the_arms_wait_on_dreamapi_doesnt_count_against_the_attempt(station):
+    # DreamAPI answers too slowly for a while, longer than the whole limit, and the arms hold; then the run finishes.
+    station.stall_s, station.run_s = 0.6, 0.8
+    m = mover(station, attempt_s=0.1, grace_s=0.2)
+    m.execute(STEP)
+    assert posts(station, "/stop") == []  # not cut off: the stall stopped the clock
+    assert station.status()["state"] == "idle"
+
+
+def test_the_default_attempt_allows_a_minute_of_motion():
+    assert StationMover(log=lambda _: None).attempt_s == 60.0

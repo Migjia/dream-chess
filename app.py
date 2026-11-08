@@ -430,7 +430,8 @@ def add_game_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--checkpoint", help="the model to run, such as a fine-tuned ID; default: the base model")
     parser.add_argument("--dream-python", default="~/dream-env/bin/python",
                         help="the Dream library's Python, which starts the model on DreamAPI before the first move")
-    parser.add_argument("--seconds", type=float, default=30.0, help="time limit per Dream-1 attempt")
+    parser.add_argument("--seconds", type=float, default=60.0,
+                        help="time limit per Dream-1 attempt, not counting time the arms wait on DreamAPI")
     parser.add_argument("--stockfish", help="path to Stockfish (or set STOCKFISH_PATH)")
     parser.add_argument("--station", default="http://127.0.0.1:8091")
     parser.add_argument("--sim-success", type=float, default=0.5, help="with --sim, how often the robot succeeds")
