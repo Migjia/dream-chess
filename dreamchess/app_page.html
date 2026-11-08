@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dream Chess</title>
+<style>
+/* Layout: a header strip with the robot's status; below it the board on the left, the robot's reasoning
+   pipeline in the middle, and the conversation (questions and activity) on the right. */
+:root {
+  --ground: #eef1ea; --surface: #ffffff; --ink: #1c2a24; --quiet: #5a675f; --rule: #d2dbd1;
+  --accent: #1f6b4c; --accent-soft: #dcefe3; --bad: #b0391f; --bad-soft: #f8e1db; --warn: #a87300; --warn-soft: #f6ebd0;
+  --light: #efe7cf; --dark: #789f7f; --brown: #7a4a24; --cream: #fbf6e8; --hl: #e5b93c;
+  --display: "Segoe UI Semibold", "Segoe UI", system-ui, sans-serif; --body: "Segoe UI", system-ui, sans-serif;
+  --mono: Consolas, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --ground: #141a17; --surface: #1c2521; --ink: #e6ece7; --quiet: #a0aea6; --rule: #33413a;
+    --accent: #5fc493; --accent-soft: #213a2c; --bad: #f08a72; --bad-soft: #43251e; --warn: #e8b648; --warn-soft: #3d3218; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--ground); color: var(--ink); font: 15px/1.45 var(--body); }
+header { position: sticky; top: 0; z-index: 3; background: var(--surface); border-bottom: 1px solid var(--rule);
+  padding: 10px max(16px, 2vw); display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; }
+h1 { margin: 0; font: 700 20px var(--display); }
+.badge { font: 700 12px var(--body); letter-spacing: .06em; text-transform: uppercase; padding: 3px 9px; border-radius: 99px; }
+.badge.sim { background: var(--warn-soft); color: var(--warn); }
+.badge.live { background: var(--bad-soft); color: var(--bad); }
+.meta { color: var(--quiet); font-size: 13px; }
+.stats { display: flex; gap: 16px; font-variant-numeric: tabular-nums; }
+.stats b { font: 700 18px var(--display); } .stats small { color: var(--quiet); font-size: 12px; margin-left: 3px; }
+.spacer { flex: 1; }
+button { font: 600 14px var(--body); color: var(--ink); background: var(--surface); border: 1px solid var(--rule);
+  border-radius: 7px; padding: 8px 14px; cursor: pointer; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+button.danger { background: var(--bad); border-color: var(--bad); color: #fff; }
+button:disabled { opacity: .45; cursor: default; }
+button:focus-visible, input:focus-visible { outline: 3px solid var(--hl); outline-offset: 2px; }
+main { display: grid; grid-template-columns: minmax(300px, 420px) minmax(300px, 1fr) minmax(280px, 380px); gap: 18px;
+  padding: 18px max(16px, 2vw) 40px; align-items: start; }
+@media (max-width: 1100px) { main { grid-template-columns: minmax(0, 1fr); } }
+section h2 { margin: 0 0 8px; font: 700 13px var(--body); letter-spacing: .06em; text-transform: uppercase; color: var(--quiet); }
+.side { display: flex; justify-content: space-between; font-size: 13px; color: var(--quiet); margin: 4px 2px; }
+.board { display: grid; grid-template: repeat(8, 1fr) / repeat(8, 1fr); aspect-ratio: 1; border-radius: 6px; overflow: hidden;
+  border: 1px solid var(--rule); user-select: none; }
+.sq { position: relative; display: grid; place-items: center; }
+.sq.l { background: var(--light); } .sq.d { background: var(--dark); }
+.sq.from::after, .sq.to::after, .sq.last::after { content: ""; position: absolute; inset: 0; }
+.sq.last::after { background: rgba(229, 185, 60, .28); }
+.sq.from::after { box-shadow: inset 0 0 0 4px var(--hl); }
+.sq.to::after { box-shadow: inset 0 0 0 4px var(--accent); }
+.sq.pick::after { box-shadow: inset 0 0 0 4px #3b7dd8; }
+.sq.click { cursor: pointer; }
+.coord { position: absolute; left: 3px; bottom: 1px; font-size: 10px; color: rgba(0,0,0,.45); }
+.piece { width: 72%; aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center; font: 700 clamp(12px, 2vw, 19px) var(--display);
+  box-shadow: 0 2px 3px rgba(0,0,0,.35); }
+.piece.w { background: var(--cream); color: #2a221c; border: 2px solid #2a221c; }
+.piece.b { background: var(--brown); color: #fbf6e8; border: 2px solid #3a220f; }
+.mini { margin-top: 14px; }
+.mini .board { width: 62%; }
+.dot { width: 46%; aspect-ratio: 1; border-radius: 50%; }
+.dot.w { background: var(--cream); border: 2px solid #2a221c; } .dot.b { background: var(--brown); }
+.sq.miss::before { content: ""; position: absolute; inset: 3px; border: 3px dashed var(--bad); border-radius: 4px; }
+.sq.extra::before { content: ""; position: absolute; inset: 0; background: rgba(176, 57, 31, .35); }
+.legend { font-size: 12px; color: var(--quiet); margin-top: 6px; }
+.pipeline { display: grid; gap: 10px; }
+.stage { background: var(--surface); border: 1px solid var(--rule); border-radius: 9px; padding: 11px 14px; display: grid; gap: 4px;
+  border-left: 5px solid var(--rule); }
+.stage.active { border-left-color: var(--hl); box-shadow: 0 0 0 1px var(--hl); }
+.stage.done { border-left-color: var(--accent); }
+.stage.failed { border-left-color: var(--bad); background: var(--bad-soft); }
+.stage .head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.stage .name { font: 700 16px var(--display); }
+.stage .what { color: var(--quiet); font-size: 13px; }
+.chip { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 99px; background: var(--ground); color: var(--quiet); white-space: nowrap; }
+.active .chip { background: var(--warn-soft); color: var(--warn); }
+.done .chip { background: var(--accent-soft); color: var(--accent); }
+.failed .chip { background: var(--bad); color: #fff; }
+.detail { font-size: 14px; } .detail b { font-weight: 600; }
+.prompt { font: 13px/1.5 var(--mono); background: var(--ground); border-radius: 6px; padding: 7px 9px; overflow-wrap: anywhere; }
+.ask { background: var(--surface); border: 2px solid var(--rule); border-radius: 10px; padding: 14px; display: grid; gap: 10px; }
+.ask.on { border-color: var(--hl); box-shadow: 0 0 0 3px rgba(229, 185, 60, .25); }
+.ask .q { font: 600 16px var(--display); }
+.ask .row { display: flex; flex-wrap: wrap; gap: 8px; }
+.ask input { flex: 1 1 140px; min-width: 0; font: 15px var(--body); padding: 8px 10px; border: 1px solid var(--rule); border-radius: 7px;
+  background: var(--surface); color: var(--ink); }
+.hint { font-size: 13px; color: var(--quiet); }
+.log { margin-top: 14px; max-height: 420px; overflow-y: auto; display: grid; gap: 2px; font-size: 13px; }
+.log div { padding: 4px 6px; border-bottom: 1px solid var(--rule); }
+.log .err { color: var(--bad); font-weight: 600; }
+.banner { grid-column: 1 / -1; padding: 10px 14px; border-radius: 8px; background: var(--bad-soft); color: var(--bad); font-weight: 600; }
+.end { background: var(--accent-soft); color: var(--accent); }
+[hidden] { display: none !important; }
+</style>
+
+<header>
+  <h1>Dream Chess</h1>
+  <span id="mode" class="badge sim">simulation</span>
+  <span class="meta">Model: <b id="model">-</b> · Engine: <b id="engine">-</b></span>
+  <div class="stats">
+    <span><b id="s-moves">0</b><small>robot moves</small></span>
+    <span><b id="s-attempts">0</b><small>Dream-1 attempts</small></span>
+    <span><b id="s-fixes">0</b><small>fixes</small></span>
+    <span><b id="s-help">0</b><small>rescues</small></span>
+  </div>
+  <span class="spacer"></span>
+  <button id="newgame" type="button" hidden>New game</button>
+  <button id="stoparms" class="danger" type="button" hidden>Stop the arms</button>
+</header>
+
+<main>
+  <div id="banner" class="banner" hidden></div>
+
+  <section aria-label="Board">
+    <h2>The game</h2>
+    <div class="side"><span>Robot (brown)</span><span id="turn"></span></div>
+    <div class="board" id="board" role="grid" aria-label="Chess board, white at the bottom"></div>
+    <div class="side"><span>You (white)</span><span id="checkflag"></span></div>
+    <div class="mini">
+      <h2>What the robot sees</h2>
+      <div class="board" id="seen" aria-label="Occupied squares as the robot sees them"></div>
+      <div class="legend">Dashed red: a piece should be here but isn't. Red fill: a piece is here that shouldn't be.</div>
+    </div>
+  </section>
+
+  <section aria-label="Pipeline">
+    <h2>How the robot thinks</h2>
+    <div class="pipeline" id="pipeline"></div>
+  </section>
+
+  <section aria-label="Conversation">
+    <h2>Your turn</h2>
+    <div class="ask" id="ask">
+      <div class="q" id="askq">Starting...</div>
+      <div class="row" id="askrow"></div>
+      <div class="hint" id="askhint"></div>
+    </div>
+    <h2 style="margin-top:16px">Activity</h2>
+    <div class="log" id="log" aria-live="polite"></div>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const STAGES = [
+  ["opponent", "1. Your move", "The camera reads which legal move you made"],
+  ["what", "2. What: pick the piece", "Stockfish scores every legal move"],
+  ["where", "3. Where: pick the square", "The move, split into physical steps"],
+  ["how", "4. How: Dream-1 moves it", "One plain sentence per step, sent to the station"],
+  ["check", "5. Check: did it work?", "Compare the board with what it should be"],
+  ["record", "6. Record the move", "The game only advances once every step is confirmed"],
+];
+const stage = {};
+for (const [id, name, what] of STAGES) {
+  const el = document.createElement("div");
+  el.className = "stage"; el.innerHTML = `<div class="head"><span class="name"></span><span class="chip">waiting</span></div><div class="what"></div><div class="detail"></div>`;
+  el.querySelector(".name").textContent = name; el.querySelector(".what").textContent = what;
+  $("pipeline").append(el);
+  stage[id] = { el, chip: el.querySelector(".chip"), detail: el.querySelector(".detail") };
+}
+function setStage(id, status, html) {
+  const s = stage[id]; s.el.className = "stage" + (status ? " " + status : "");
+  s.chip.textContent = { active: "working", done: "done", failed: "failed", "": "waiting" }[status || ""] || status;
+  if (html !== undefined) s.detail.innerHTML = html;
+}
+// The record card keeps showing the last move recorded until the next one replaces it.
+function resetRobotStages() { for (const id of ["what", "where", "how", "check"]) setStage(id, "", ""); }
+const esc = t => String(t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const score = cp => Math.abs(cp) >= 90000 ? (cp > 0 ? "forced mate" : "being mated") : `${cp >= 0 ? "+" : ""}${(cp / 100).toFixed(2)} pawns`;
+
+let since = 0, game = null, attempts = 0, fixes = 0, rescues = 0, moves = 0, maxAttempts = 6;
+let awaitingCheck = false, robotMove = "", highlight = { from: null, to: null }, stepCount = 0;
+
+function log(text, cls) {
+  const d = document.createElement("div"); d.textContent = text; if (cls) d.className = cls;
+  $("log").prepend(d);
+}
+function checkPassed() {
+  if (!awaitingCheck) return;
+  awaitingCheck = false;
+  setStage("check", "done", "The board matches what it should be after this step.");
+}
+function handle(e) {
+  if (e.game !== game) { game = e.game; attempts = fixes = rescues = moves = 0; robotMove = ""; resetRobotStages(); setStage("opponent", "", ""); setStage("record", "", ""); $("log").innerHTML = ""; }
+  // A step passed its check when the next real event isn't a failure report. Status lines ("say") and the
+  // person's answers come before a failure report, so they don't count.
+  const failureNext = e.type === "agent" && /^(CHECK|HELP)/.test(e.text);
+  if (awaitingCheck && !failureNext && !["attempt", "say", "attempt_result", "help"].includes(e.type)) checkPassed();
+  if (e.type === "say") log(e.text);
+  if (e.type === "error") { log(e.text, "err"); $("banner").textContent = e.text; $("banner").hidden = false; }
+  if (e.type === "game_start") { $("engine").textContent = e.engine; }
+  if (e.type === "opponent_move") setStage("opponent", "done", `You played <b>${esc(e.san)}</b>.`);
+  if (e.type === "agent") {
+    const [kind, ...rest] = e.text.split(/\s+/); const body = rest.join(" ");
+    if (kind === "SEEN") {
+      const san = body.replace(/^opponent played /, "");
+      setStage("opponent", "done", `The camera confirms you played <b>${esc(san)}</b>.`);
+      if (robotMove) { moves++; setStage("record", "done", `Recorded the robot's <b>${esc(robotMove)}</b>, then waited for your move.`); robotMove = ""; }
+      resetRobotStages(); setStage("what", "active", "Thinking...");
+    } else if (kind === "WHAT") {
+      const m = body.match(/(\w+) on (\w\d) \(best ([+-]\d+) cp, (\d+) neighbors, (\d+) alternatives\)/);
+      resetRobotStages(); stepCount = 0;
+      setStage("what", "done", m ? `Move the <b>${m[1]} on ${m[2]}</b>. Its best move scores <b>${score(+m[3])}</b>.` +
+        ` ${m[4]} occupied squares around it.` : esc(body));
+      setStage("where", "active", "Choosing the square...");
+    } else if (kind === "WHERE") {
+      const m = body.match(/(\S+) \(([+-]\d+) cp, risk (\d+)\)/);
+      robotMove = m ? m[1] : body;
+      setStage("where", "done", m ? `Play <b>${esc(m[1])}</b> (${score(+m[2])}). Next, each physical step goes to Dream-1.` : esc(body));
+    } else if (kind === "HOW") {
+      const m = body.match(/\[(\d+)\/(\d+)\] (.*)/);
+      if (m) {
+        maxAttempts = +m[2]; stepCount++;
+        const sq = (m[3].match(/\b[a-h][1-8]\b/g) || []);
+        highlight = { from: sq[0] || null, to: sq[1] || null };
+        const arm = (m[3].match(/your (left|right) arm/) || [])[1] || "";
+        const fix = /brown piece|white piece/.test(m[3]) && +m[1] > 1;
+        setStage("how", "active", `${fix ? "Fix" : "Step"} attempt <b>${m[1]} of ${m[2]}</b>, ${arm} arm.<div class="prompt">${esc(m[3])}</div>`);
+        setStage("check", "", "");
+      }
+    } else if (kind === "CHECK") {
+      const miss = (body.match(/missing=\[(.*?)\]/) || [, ""])[1].match(/[a-h][1-8]/g) || [];
+      const extra = (body.match(/extra=\[(.*?)\]/) || [, ""])[1].match(/[a-h][1-8]/g) || [];
+      awaitingCheck = false; fixes++;
+      setStage("check", "failed", `Not right: ${miss.length ? "expected a piece on <b>" + miss.join(", ") + "</b>" : ""}` +
+        `${miss.length && extra.length ? " and " : ""}${extra.length ? "found one on <b>" + extra.join(", ") + "</b>" : ""}. Sending a fix.`);
+    } else if (kind === "HELP") {
+      awaitingCheck = false; rescues++;
+      setStage("check", "failed", `Needs a person: ${esc(body)}`);
+    }
+  }
+  if (e.type === "attempt") {
+    attempts++;
+    setStage("how", "done", stage.how.detail.innerHTML + `<div class="hint">Attempt finished in ${e.seconds}s.</div>`);
+    setStage("check", "active", "Comparing the board with the plan...");
+    awaitingCheck = true;
+  }
+  if (e.type === "attempt_result" && !e.landed) setStage("check", "failed", `Not right: it ended up on <b>${esc(e.ended_on || "?")}</b>.`);
+  if (e.type === "help") setStage("check", "failed", `Needs a person: ${esc((e.changes || []).join("; ") || "check the board")}.`);
+  if (e.type === "game_end") {
+    if (robotMove && awaitingCheck) checkPassed();
+    if (e.robot_moves !== undefined) moves = e.robot_moves;
+    if (e.human_rescues !== undefined) rescues = e.human_rescues;
+    const text = `Game over: ${e.ending}${e.result ? ", result " + e.result : ""}.`;
+    log(text);
+    $("banner").textContent = text; $("banner").className = "banner end"; $("banner").hidden = false;
+    if (robotMove) setStage("record", "done", `Recorded <b>${esc(robotMove)}</b>. ${esc(text)}`);
+  }
+}
+
+// --- boards -------------------------------------------------------------------------------------------------
+const FILES = "abcdefgh";
+const squares = {}, seenSquares = {};
+function buildBoard(el, store, mini) {
+  for (let r = 8; r >= 1; r--) for (let f = 0; f < 8; f++) {
+    const name = FILES[f] + r, sq = document.createElement("div");
+    sq.className = "sq " + ((f + r) % 2 === 1 ? "l" : "d"); sq.dataset.sq = name;
+    if (!mini && (f === 0)) { const c = document.createElement("span"); c.className = "coord"; c.textContent = r; sq.append(c); }
+    if (!mini && r === 1) { const c = document.createElement("span"); c.className = "coord"; c.style.left = "auto"; c.style.right = "3px"; c.textContent = FILES[f]; sq.append(c); }
+    el.append(sq); store[name] = sq;
+  }
+}
+buildBoard($("board"), squares, false); buildBoard($("seen"), seenSquares, true);
+function parseFen(fen) {
+  const out = {}; const rows = fen.split(" ")[0].split("/");
+  rows.forEach((row, i) => { let f = 0; for (const ch of row) { if (/\d/.test(ch)) f += +ch; else { out[FILES[f] + (8 - i)] = ch; f++; } } });
+  return out;
+}
+function drawBoards(st) {
+  const pieces = st.fen ? parseFen(st.fen) : {};
+  for (const [name, sq] of Object.entries(squares)) {
+    sq.querySelectorAll(".piece").forEach(p => p.remove());
+    const p = pieces[name];
+    if (p) { const d = document.createElement("div"); d.className = "piece " + (p === p.toUpperCase() ? "w" : "b"); d.textContent = p.toUpperCase(); sq.append(d); }
+    sq.classList.toggle("last", !!st.last_move && (st.last_move.slice(0, 2) === name || st.last_move.slice(2, 4) === name));
+    sq.classList.toggle("from", highlight.from === name && stage.how.el.classList.contains("active"));
+    sq.classList.toggle("to", highlight.to === name && stage.how.el.classList.contains("active"));
+    sq.classList.toggle("pick", picked === name);
+    sq.classList.toggle("click", askKind === "move");
+  }
+  const mismatch = new Set(st.mismatch || []);
+  for (const [name, sq] of Object.entries(seenSquares)) {
+    sq.innerHTML = ""; const c = (st.physical || {})[name];
+    if (c) { const d = document.createElement("div"); d.className = "dot " + c; sq.append(d); }
+    const wanted = pieces[name] ? (pieces[name] === pieces[name].toUpperCase() ? "w" : "b") : null;
+    sq.classList.toggle("miss", mismatch.has(name) && !!wanted && c !== wanted);
+    sq.classList.toggle("extra", mismatch.has(name) && !!c && c !== wanted);
+  }
+  $("turn").textContent = st.turn ? `${st.turn === "white" ? "Your" : "Robot's"} turn` : "";
+  $("checkflag").textContent = st.check ? "Check!" : "";
+}
+
+// --- questions ----------------------------------------------------------------------------------------------
+let askId = null, askKind = null, picked = null;
+async function post(path, body) {
+  const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Dream-Chess": "1" }, body: JSON.stringify(body || {}) });
+  return r.json().catch(() => ({}));
+}
+async function answer(text) {
+  if (askId === null) return;
+  const id = askId; askId = null; picked = null;
+  $("askrow").innerHTML = ""; $("askq").textContent = "Sent."; $("ask").classList.remove("on");
+  await post("/answer", { id, text });
+}
+function button(label, text, cls) { const b = document.createElement("button"); b.type = "button"; b.textContent = label; if (cls) b.className = cls; b.onclick = () => answer(text); return b; }
+function input(placeholder, submitLabel) {
+  const i = document.createElement("input"); i.placeholder = placeholder; i.id = "answerbox";
+  i.addEventListener("keydown", ev => { if (ev.key === "Enter") answer(i.value.trim()); });
+  const b = document.createElement("button"); b.className = "primary"; b.type = "button"; b.textContent = submitLabel; b.onclick = () => answer(i.value.trim());
+  return [i, b];
+}
+function showQuestion(p, st) {
+  if (!p) {
+    askId = null; askKind = null; $("ask").classList.remove("on"); $("askrow").innerHTML = "";
+    $("askhint").textContent = "";
+    $("askq").textContent = st.running ? (st.auto_opponent ? "Watching: a simulated opponent plays White." : "The robot is working...") :
+      (st.summary ? "The game has ended." : "Starting...");
+    return;
+  }
+  if (p.id === askId) return;
+  askId = p.id; askKind = p.kind; picked = null;
+  $("ask").classList.add("on"); $("askq").textContent = p.prompt.replace(/\s+/g, " "); $("askhint").textContent = "";
+  const row = $("askrow"); row.innerHTML = "";
+  if (p.kind === "move") { row.append(...input("e4, Nf3 or e2e4", "Play")); row.append(button("Quit", "quit")); $("askhint").textContent = "Make the move on the real board, then type it here, or click a white piece and then its square."; }
+  else if (p.kind === "yesno") { row.append(button("Yes, it landed", "y", "primary"), button("No", "n")); }
+  else if (p.kind === "confirm") { row.append(button("Yes: a hand is on the e-stop", "yes", "danger"), button("Not yet", "no")); }
+  else if (p.kind === "continue") { row.append(button("Done", "", "primary")); }
+  else if (p.kind === "bumps") { row.append(button("Nothing else moved", "", "primary")); row.append(...input("e.g. e4 e3", "Report")); $("askhint").textContent = "Type the square it was on, then where it is now."; }
+  else if (p.kind === "where") { row.append(...input("square, e.g. f5", "Send")); row.append(button("Didn't move", "same"), button("In the tray", "tray"), button("Off the board", "gone")); }
+  else { row.append(...input("", "Send")); }
+  const box = $("answerbox"); if (box) box.focus();
+}
+$("board").addEventListener("click", ev => {
+  if (askKind !== "move") return;
+  const sq = ev.target.closest(".sq"); if (!sq) return;
+  const name = sq.dataset.sq;
+  if (!picked) { picked = name; }
+  else if (picked === name) { picked = null; }
+  else { const box = $("answerbox"); if (box) box.value = picked + name; picked = null; }
+  drawBoards(lastState);
+});
+$("newgame").onclick = async () => { $("banner").hidden = true; $("banner").className = "banner"; await post("/new"); };
+$("stoparms").onclick = async () => { const r = await post("/stop"); log(r.message || "Stop sent."); };
+
+let lastState = {}, bootId = null;
+async function tick() {
+  try {
+    const st = await (await fetch(`/state?since=${since}`, { cache: "no-store" })).json();
+    if (st.reset || (bootId && st.boot !== bootId)) {  // the app restarted: start the page over
+      bootId = st.boot; since = 0; game = null; $("log").innerHTML = ""; $("banner").hidden = true;
+      setTimeout(tick, 50); return;
+    }
+    bootId = st.boot;
+    lastState = st; since = st.next;
+    for (const e of st.events) handle(e);
+    $("mode").textContent = st.mode; $("mode").className = "badge " + (st.mode === "simulation" ? "sim" : "live");
+    $("model").textContent = st.checkpoint; $("stoparms").hidden = st.mode === "simulation";
+    $("newgame").hidden = st.running;
+    $("s-moves").textContent = moves;
+    $("s-attempts").textContent = attempts; $("s-fixes").textContent = fixes; $("s-help").textContent = rescues;
+    if (st.pending && st.pending.kind === "move") setStage("opponent", "active", "Waiting for your move.");
+    showQuestion(st.pending, st);
+    drawBoards(st);
+  } catch (err) {
+    $("banner").textContent = "Lost the connection to the app. Is app.py still running?"; $("banner").hidden = false;
+  }
+  setTimeout(tick, 400);
+}
+tick();
+</script>
+</html>

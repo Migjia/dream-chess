@@ -1,0 +1,72 @@
+Using your left arm, pick up the brown knight on square g8 and place it upright in the center of square f6. Move slowly and do not touch any other piece.
+Using your right arm, pick up the brown pawn on square c7 and place it upright in the center of square c5. Move slowly and do not touch any other piece.
+Using your left arm, pick up the brown pawn on square e7 and place it upright in the center of square e6. Move slowly and do not touch any other piece.
+Using your right arm, pick up the brown queen on square d8 and place it upright in the center of square b6. Move slowly and do not touch any other piece.
+Using your right arm, pick up the brown piece on square c7 and place it upright in the center of square b6. Move slowly and do not touch any other piece.
+Using your left arm, pick up the brown bishop on square f8 and place it upright in the center of square d6. Move slowly and do not touch any other piece.
+Using your left arm, pick up the brown king on square e8 and place it upright in the center of square e7. Move slowly and do not touch any other piece.
+Using your right arm, pick up the brown queen on square b6 and place it upright in the center of square c6. Move slowly and do not touch any other piece.
+Using your left arm, pick up the brown pawn on square e6 and place it upright in the center of square e5. Move slowly and do not touch any other piece.
+Using your left arm, pick up the brown piece on square f4 and place it upright in the center of square e5. Move slowly and do not touch any other piece.
+Using your right arm, pick up the brown pawn on square a7 and place it upright in the center of square a6. Move slowly and do not touch any other piece.
+Using your right arm, pick up the brown pawn on square b7 and place it upright in the center of square b6. Move slowly and do not touch any other piece.
+Using your left arm, pick up the brown pawn on square g7 and place it upright in the center of square g5. Move slowly and do not touch any other piece.
+Using your right arm, pick up the brown bishop on square c8 and place it upright in the center of square b7. Move slowly and do not touch any other piece.
+Using your right arm, pick up the brown piece on square a7 and place it upright in the center of square b7. Move slowly and do not touch any other piece.
+Using your left arm, pick up the brown king on square e7 and place it upright in the center of square e6. Move slowly and do not touch any other piece.
+Using your left arm, pick up the brown knight on square g8 and place it upright in the center of square f6. Move slowly and do not touch any other piece.
+Using your right arm, pick up the brown knight on square b8 and place it upright in the center of square c6. Move slowly and do not touch any other piece.
+Using your left arm, pick up the brown pawn on square e7 and place it upright in the center of square e5. Move slowly and do not touch any other piece.
+Using your right arm, pick up the brown pawn on square a7 and place it upright in the center of square a6. Move slowly and do not touch any other piece.
+Using your right arm, pick up the brown piece on square a5 and place it upright in the center of square a6. Move slowly and do not touch any other piece.
+Using your left arm, pick up the brown king on square e8 and place it upright in the center of square e7. Move slowly and do not touch any other piece.
+Using your left arm, pick up the brown king on square e7 and place it upright in the center of square d6. Move slowly and do not touch any other piece.
+Using your right arm, pick up the brown rook on square a8 and place it upright in the center of square b8. Move slowly and do not touch any other piece.
+Using your left arm, pick up the brown bishop on square f8 and place it upright in the center of square e7. Move slowly and do not touch any other piece.
+Using your left arm, pick up the brown piece on square e8 and place it upright in the center of square e7. Move slowly and do not touch any other piece.
+Using your right arm, pick up the brown king on square d6 and place it upright in the center of square e6. Move slowly and do not touch any other piece.
+Using your right arm, pick up the brown pawn on square d7 and place it upright in the center of square d6. Move slowly and do not touch any other piece.
+Using your right arm, pick up the brown bishop on square c8 and place it upright in the center of square d7. Move slowly and do not touch any other piece.
+Using your right arm, pick up the brown rook on square b8 and place it upright in the center of square a8. Move slowly and do not touch any other piece.
+Using your right arm, pick up the brown piece on square b8 and place it upright in the center of square a8. Move slowly and do not touch any other piece.
+Using your right arm, pick up the brown rook on square a8 and place it upright in the center of square c8. Move slowly and do not touch any other piece.
+Using your left arm, pick up the brown knight on square g8 and place it upright in the center of square f6. Move slowly and do not touch any other piece.
+Using your left arm, pick up the brown pawn on square e7 and place it upright in the center of square e6. Move slowly and do not touch any other piece.
+Using your left arm, pick up the brown bishop on square f8 and place it upright in the center of square d6. Move slowly and do not touch any other piece.
+Using your left arm, pick up the brown king on square e8 and place it upright in the center of square e7. Move slowly and do not touch any other piece.
+Using your left arm, pick up the brown piece on square f8 and place it upright in the center of square e7. Move slowly and do not touch any other piece.
+Using your right arm, pick up the brown pawn on square a7 and place it upright in the center of square a5. Move slowly and do not touch any other piece.
+Using your left arm, pick up the brown pawn on square h7 and place it upright in the center of square h6. Move slowly and do not touch any other piece.
+Using your right arm, pick up the brown pawn on square c7 and place it upright in the center of square c6. Move slowly and do not touch any other piece.
+Using your right arm, pick up the brown queen on square d8 and place it upright in the center of square b6. Move slowly and do not touch any other piece.
+Using your right arm, pick up the brown piece on square b5 and place it upright in the center of square b6. Move slowly and do not touch any other piece.
+Using your left arm, pick up the brown pawn on square e6 and place it upright in the center of square e5. Move slowly and do not touch any other piece.
+Using your right arm, pick up the brown bishop on square d6 and place it upright in the center of square b4. Move slowly and do not touch any other piece.
+Using your right arm, pick up the white pawn on square c6 and put it in the tray on your right. Move slowly and do not touch any other piece.
+Using your right arm, pick up the brown pawn on square d7 and place it upright in the center of square c6. Move slowly and do not touch any other piece.
+Using your left arm, pick up the brown king on square e7 and place it upright in the center of square e6. Move slowly and do not touch any other piece.
+Using your right arm, pick up the brown piece on square d6 and place it upright in the center of square e6. Move slowly and do not touch any other piece.
+Using your left arm, pick up the white knight on square f4 and put it in the tray on your left. Move slowly and do not touch any other piece.
+Using your left arm, pick up the brown pawn on square e5 and place it upright in the center of square f4. Move slowly and do not touch any other piece.
+Using your left arm, pick up the brown pawn on square e7 and place it upright in the center of square e5. Move slowly and do not touch any other piece.
+Using your left arm, pick up the brown knight on square g8 and place it upright in the center of square f6. Move slowly and do not touch any other piece.
+Using your left arm, pick up the brown bishop on square f8 and place it upright in the center of square c5. Move slowly and do not touch any other piece.
+Using your left arm, pick up the brown pawn on square h7 and place it upright in the center of square h6. Move slowly and do not touch any other piece.
+Using your left arm, pick up the brown king on square e8 and place it upright in the center of square g8. Move slowly and do not touch any other piece.
+Using your left arm, pick up the brown rook on square h8 and place it upright in the center of square f8. Move slowly and do not touch any other piece.
+Using your left arm, pick up the brown pawn on square g7 and place it upright in the center of square g6. Move slowly and do not touch any other piece.
+Using your right arm, pick up the brown pawn on square d7 and place it upright in the center of square d5. Move slowly and do not touch any other piece.
+Using your right arm, pick up the brown knight on square b8 and place it upright in the center of square c6. Move slowly and do not touch any other piece.
+Using your right arm, pick up the brown bishop on square c8 and place it upright in the center of square f5. Move slowly and do not touch any other piece.
+Using your right arm, pick up the brown queen on square d8 and place it upright in the center of square d7. Move slowly and do not touch any other piece.
+Using your left arm, pick up the brown king on square e8 and place it upright in the center of square c8. Move slowly and do not touch any other piece.
+Using your right arm, pick up the brown rook on square a8 and place it upright in the center of square d8. Move slowly and do not touch any other piece.
+Using your right arm, pick up the brown pawn on square a7 and place it upright in the center of square a6. Move slowly and do not touch any other piece.
+Using your left arm, pick up the white pawn on square e5 and put it in the tray on your left. Move slowly and do not touch any other piece.
+Using your left arm, pick up the white knight on square f4 and put it in the tray on your left. Move slowly and do not touch any other piece.
+Using your left arm, pick up the white bishop on square g5 and put it in the tray on your left. Move slowly and do not touch any other piece.
+Using your left arm, pick up the white pawn on square h4 and put it in the tray on your left. Move slowly and do not touch any other piece.
+Using your right arm, pick up the white pawn on square d5 and put it in the tray on your right. Move slowly and do not touch any other piece.
+Using your right arm, pick up the white knight on square c4 and put it in the tray on your right. Move slowly and do not touch any other piece.
+Using your right arm, pick up the white bishop on square b5 and put it in the tray on your right. Move slowly and do not touch any other piece.
+Using your right arm, pick up the white pawn on square a4 and put it in the tray on your right. Move slowly and do not touch any other piece.
