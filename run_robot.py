@@ -29,14 +29,17 @@ ROBOT = chess.BLACK
 
 
 class GameLog:
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, listener=None):
         path.parent.mkdir(parents=True, exist_ok=True)
         self.path = path
+        self.listener = listener  # also hands every event to the app's page, when there is one
 
     def __call__(self, event: dict) -> None:
         event = {"time": datetime.datetime.now().isoformat(timespec="seconds"), **event}
         with self.path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(event) + "\n")
+        if self.listener is not None:
+            self.listener(event)
 
 
 def plain(line: str) -> str:
@@ -64,6 +67,8 @@ def plain(line: str) -> str:
         return "That didn't work: " + " and ".join(parts) + ". Fixing it."
     if kind == "SEEN":
         return "You " + rest.split(" ", 1)[1] + "."
+    if kind == "HELP":
+        return "I can't fix this alone, so I'm asking a person for help."
     return line
 
 
@@ -75,10 +80,12 @@ def describe_position(board: chess.Board) -> str:
     return "\n".join(f"  {name}: {', '.join(squares)}" for name, squares in groups.items())
 
 
-def play(args, ask=input, say=print, client=None, clock=time.monotonic) -> dict:
+def play(args, ask=input, say=print, client=None, clock=time.monotonic, on_event=None, on_ready=None) -> dict:
+    """Play one game. `on_event` receives every logged event; `on_ready(board, physical, stop_arms)` is called once
+    the game is set up, with a function returning the physical board as the robot currently believes it."""
     board = chess.Board(args.fen)
     label = args.label or datetime.datetime.now().strftime("game-%Y%m%d-%H%M%S")
-    log = GameLog(Path(args.log_dir) / f"{label}.jsonl")
+    log = GameLog(Path(args.log_dir) / f"{label}.jsonl", listener=on_event)
     if args.sim:
         from dreamchess.mock import MockDream, MockHuman, MockPerception, SimWorld
 
@@ -87,8 +94,15 @@ def play(args, ask=input, say=print, client=None, clock=time.monotonic) -> dict:
         mover = AttemptMover(MockDream(world, seed=args.seed, p_success=args.sim_success), None, log, clock)
         perception = MockPerception(world, noise=0)
         human = MockHuman(world)
-        opponent = TerminalOpponent(ask, say, on_move=lambda after: setattr(world, "occ", occupancy(after)), record=log)
+        if getattr(args, "auto_opponent", False):
+            from dreamchess.mock import RandomOpponent
+
+            opponent = RandomOpponent(world, seed=args.seed + 2)
+        else:
+            opponent = TerminalOpponent(ask, say, on_move=lambda after: setattr(world, "occ", occupancy(after)),
+                                        record=log)
         stop_arms = lambda: None
+        physical = lambda: dict(world.occ)
     else:
         from dreamchess.station_mover import StationClient, StationMover
 
@@ -108,6 +122,7 @@ def play(args, ask=input, say=print, client=None, clock=time.monotonic) -> dict:
         human = TerminalHuman(eyes, ask, say, record=log)
         opponent = TerminalOpponent(ask, say, on_move=eyes.opponent_moved, record=log)
         stop_arms = client.stop
+        physical = lambda: dict(eyes.belief)
 
     # Start the engine only once every check has passed. Stockfish runs as a separate program, so
     # an engine started and then abandoned by a refusal would keep this program from exiting.
@@ -129,6 +144,8 @@ def play(args, ask=input, say=print, client=None, clock=time.monotonic) -> dict:
         raise
     log({"type": "game_start", "fen": board.fen(), "robot": "brown", "engine": engine.name,
          "sim": bool(args.sim), "checkpoint": args.checkpoint, "seconds_per_attempt": args.seconds})
+    if on_ready is not None:
+        on_ready(board, physical, stop_arms)
 
     started = clock()
     ending = "finished"

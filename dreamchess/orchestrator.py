@@ -183,6 +183,7 @@ class Orchestrator:
             human_calls += 1
             self.stats.human_calls += 1
             attempts = 0
+            self.log(f"HELP  asking a person to fix the board: missing={sorted(missing)} extra={sorted(extra)}")
             self.human.request_fix(f"Please fix the board. Missing: {missing}. Extra: {extra}.", goal)
 
     def _corrective_step(self, missing: Occupancy, extra: Occupancy, goal: Occupancy, first: Step | None) -> Step | None:

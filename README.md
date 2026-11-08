@@ -140,6 +140,20 @@ camera code takes over and nothing else changes.
 | Camera check on the real board | ⚠️ Waiting for approval to change the station's configuration |
 | Stockfish on the NUC | ⚠️ Not installed yet, so games there use a weak built-in engine |
 
+## The app
+
+`app.py` shows the robot thinking through every step of a game, live: your move, What, Where, How,
+Check and Record, with the board as recorded beside the board as the robot sees it. Everything the
+person needs to do, from confirming the e-stop to saying whether a piece landed, happens on the page.
+
+```bash
+python app.py --sim --auto-opponent      # dummy data: watch a simulated robot play itself
+python app.py --sim                      # play the simulated robot from the page
+python app.py                            # the real robot, on the NUC (see docs/RUNBOOK.md)
+```
+
+Then open http://127.0.0.1:8800. On the NUC, forward it first with `ssh -L 8800:127.0.0.1:8800 dream-nuc`.
+
 ## Try it
 
 On any computer, with no robot:
@@ -176,7 +190,8 @@ fixes, human rescues, and moves per hour. Ctrl-C stops the arms at once.
 | How: send a step to the station | `dreamchess/station_mover.py` |
 | Check: read the board from the camera | `dreamchess/vision.py`, `vision_tool.py` |
 | A person standing in for the camera | `dreamchess/human_eyes.py` |
-| Play a real game | `run_robot.py` |
+| Play a real game: the app, or the terminal | `app.py`, `dreamchess/app_page.html`, `run_robot.py` |
+| Watch a data collection session | `collect_watch.py` |
 | Dream-1 eval | `eval_dream.py`, `dreamchess/evaluation.py` |
 | Simulation and visuals | `dreamchess/mock.py`, `dreamchess/synth.py`, `dreamchess/replay.py`, `visualize.py` |
 | Live dashboard | `dev_server.py` |
@@ -187,6 +202,8 @@ fixes, human rescues, and moves per hour. Ctrl-C stops the arms at once.
 - [docs/MISSION.md](docs/MISSION.md): the decisions and why, and how we'll know it's working.
 - [docs/GAME_PLAN.md](docs/GAME_PLAN.md): who does what, and the order to test in.
 - [docs/EVAL.md](docs/EVAL.md): testing Dream-1 and planning fine-tuning data.
+- [docs/RUNBOOK.md](docs/RUNBOOK.md): from arriving at the station to a game on screen.
+- [docs/COLLECTION_GAMES.md](docs/COLLECTION_GAMES.md): the scripted games used to collect fine-tuning data.
 
 ## Safety
 
