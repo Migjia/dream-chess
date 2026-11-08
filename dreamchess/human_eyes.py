@@ -127,12 +127,23 @@ class TerminalOpponent:
     """Asks the person for their move and checks it's legal."""
 
     def __init__(self, ask: Ask = input, say: Say = print, on_move: Callable[[chess.Board], None] = lambda _: None,
-                 record: Record = lambda _: None):
+                 record: Record = lambda _: None, script: tuple[str, ...] = ()):
         self.ask, self.say, self.on_move, self.record = ask, say, on_move, record
+        self.script = script  # White's moves in a scripted game, to suggest one at a time
+
+    def _hint(self, board: chess.Board) -> str:
+        index = len(board.move_stack) // 2 if board.turn == chess.WHITE else None
+        if index is None or index >= len(self.script):
+            return ""
+        try:
+            move = board.parse_san(self.script[index])
+        except ValueError:
+            return ""  # off the script: no suggestion
+        return f" [script: play {self.script[index]}, {chess.square_name(move.from_square)} to "                f"{chess.square_name(move.to_square)}]"
 
     def __call__(self, board: chess.Board) -> None:
         while True:
-            text = self.ask("Your move, such as e4, Nf3, or e2e4 (or 'quit'): ").strip()
+            text = self.ask(f"Your move{self._hint(board)}, such as e4, Nf3, or e2e4 (or 'quit'): ").strip()
             if text.lower() in ("quit", "q"):
                 raise GameQuit()
             move = None

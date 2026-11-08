@@ -326,3 +326,15 @@ def test_without_the_dream_library_the_warm_up_says_so(tmp_path, station):  # no
     session.warm_up()
     assert session.warm_process is None
     assert session.brain()["warm"]["state"] == "off"
+
+
+def test_replaying_a_collection_game_suggests_whites_move_and_plays_the_trained_reply(tmp_path):
+    session = app.Session(args(tmp_path, script=1, fen=chess.STARTING_FEN, max_plies=2))
+    session.start()
+    state = wait_for(session, lambda s: s["pending"] and s["pending"]["kind"] == "move")
+    assert "[script: play e4, e2 to e4]" in state["pending"]["prompt"]
+    assert state["fen"] == chess.Board().fen()
+    session.answer(state["pending"]["id"], "e4")
+    state = wait_for(session, lambda s: not s["running"])
+    texts = [e.get("text", "") for e in state["events"] if e["type"] == "agent"]
+    assert any(t.startswith("WHERE Nf6 (from the script)") for t in texts)

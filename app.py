@@ -232,7 +232,7 @@ class Session:
     def _starting_snapshot(self) -> dict:
         """The position the game starts from, shown while the person sets up the board (before the game publishes)."""
         try:
-            start = chess.Board(self.args.fen)
+            start = chess.Board(chess.STARTING_FEN if getattr(self.args, "script", None) else self.args.fen)
         except ValueError:
             return {}  # the game itself reports a bad position
         return {"fen": start.fen(), "last_move": None, "turn": "white" if start.turn else "brown",
@@ -437,6 +437,8 @@ def add_game_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--sim-success", type=float, default=0.5, help="with --sim, how often the robot succeeds")
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--max-plies", type=int, default=None)
+    parser.add_argument("--script", type=int, choices=(1, 2, 3),
+                        help="replay collection game 1, 2 or 3: the robot plays the moves Dream-1 was trained on")
     parser.add_argument("--log-dir", default=str(run_robot.GAMES))
     parser.add_argument("--frames", default="~/.dreamlabs/last-run_inputs",
                         help="where the station saves the camera frames it hands Dream-1")
