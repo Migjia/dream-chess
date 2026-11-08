@@ -82,7 +82,7 @@ class StationMover:
     def __init__(
         self,
         client: StationClient | None = None,
-        attempt_s: float = 30.0,
+        attempt_s: float = 60.0,
         checkpoint: str | None = None,
         poll_s: float = 0.5,
         grace_s: float = 20.0,
@@ -130,16 +130,22 @@ class StationMover:
         first_action = None
         reports_chunks = False
         noted = started
+        stalled_s = 0.0  # time the arms held still waiting on DreamAPI, which doesn't count against the attempt
+        last_stalls, last_poll = None, started
         while True:
             status = self.client.status()
+            now = self.clock()
+            stalls = status.get("stalls")
+            if first_action is not None and isinstance(stalls, int) and last_stalls is not None and stalls > last_stalls:
+                stalled_s += now - last_poll
+            last_stalls, last_poll = stalls if isinstance(stalls, int) else last_stalls, now
             reports_chunks = reports_chunks or "chunks" in status
             if (status.get("chunks") or 0) > 0 and first_action is None:
                 first_action = self.clock()
             if status.get("state") not in BUSY:
                 break
-            now = self.clock()
             waiting = reports_chunks and first_action is None
-            limit = (started + self.first_answer_s) if waiting else (first_action or started) + self.attempt_s + self.grace_s
+            limit = (started + self.first_answer_s) if waiting                 else (first_action or started) + self.attempt_s + self.grace_s + stalled_s
             if now >= limit:
                 self.log("      Dream-1 never answered: stopping the run" if waiting
                          else "      the station run went past its time limit: stopping it")
