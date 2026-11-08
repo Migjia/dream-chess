@@ -80,6 +80,20 @@ class Session:
         # The robot's eyes: a simulated camera read by the real vision code, or the frames the station hands Dream-1.
         self._eyes: SimEyes | None = None
         self.frames = None if args.sim else StationFrames(getattr(args, "frames", "~/.dreamlabs/last-run_inputs"))
+        # The station's top camera, read into the board: the checker agent after each robot step, and the person's
+        # move when they say they've made it. A picture is a short "hold still" run; it stays in memory.
+        self.webcam = None
+        if not args.sim and getattr(args, "top_camera", True):
+            from dreamchess.station_camera import StationSnapshot
+            from dreamchess.station_mover import StationClient
+            from dreamchess.webcam import BoardCamera
+
+            frames = getattr(args, "frames", "~/.dreamlabs/last-run_inputs")
+            self.webcam = BoardCamera(lambda: StationSnapshot(StationClient(args.station, timeout_s=10), frames),
+                                      getattr(args, "top_calibration", "~/.dream-chess/top-calibration.npz"),
+                                      frames_per_read=1, frames_per_capture=1, live=False)
+            args.board_camera = self.webcam
+        self._webcam_seen: tuple[float, dict] | None = None
         # Starting the model on DreamAPI before the first move needs it (tools/warm_dream.py), on the real robot.
         self.warm_file = Path(tempfile.gettempdir()) / f"dream-chess-warm-{os.getpid()}.json"
         self.warm_process: subprocess.Popen | None = None
@@ -315,6 +329,15 @@ class Session:
 
     def camera(self, role: str, grid: bool) -> bytes | None:
         """One camera frame. In a simulation, `grid` draws what the vision code detected on it."""
+        if role == "webcam":
+            if self.webcam is None:
+                return None
+            from dreamchess.vision import CalibrationError
+
+            try:
+                return self.webcam.snapshot(grid)
+            except CalibrationError:
+                return None
         if role not in ROLES:
             return None
         if self.args.sim:
@@ -332,6 +355,8 @@ class Session:
         with self.lock:
             snapshot = dict(self.snapshot)
         physical = snapshot.get("physical") or {}
+        if self.webcam is not None:
+            return self._webcam_vision(physical)
         if not self.args.sim:
             ages = {role: found[1] for role in ROLES if (found := self.frames.latest(role))}
             return {"source": "person", "ready": True, "detected": physical, "agrees": True,
@@ -339,6 +364,76 @@ class Session:
         view = self.eyes().view(snapshot.get("fen"), physical)
         return {"source": "camera", "ready": view["ready"], "error": view["error"],
                 "detected": view.get("detected", {}), "agrees": view.get("agrees")}
+
+    def _webcam_vision(self, physical: dict) -> dict:
+        from dreamchess.vision import CalibrationError
+
+        status = self.webcam.status()
+        out = {"source": "webcam", "ready": status["calibrated"], "calibration": status, "error": status["error"]}
+        if not status["calibrated"]:
+            return out
+        if not self.webcam.live:  # the station's camera: only what the last picture showed, never a new one
+            seen = self.webcam.last_seen
+            return {**out, "detected": seen or {}, "agrees": seen == physical if seen is not None else None,
+                    "picture": status.get("picture_age_s")}
+        cached = self._webcam_seen
+        if cached is None or time.time() - cached[0] > 1.5:  # reading takes a few frames, so share it between polls
+            try:
+                cached = (time.time(), self.webcam.read())
+            except CalibrationError as err:
+                return {**out, "error": str(err)}
+            self._webcam_seen = cached
+        return {**out, "detected": cached[1], "agrees": cached[1] == physical}
+
+    def webcam_action(self, action: str, body: dict) -> dict:
+        """Calibrate the webcam from the page: the empty board, then the starting position; or start over."""
+        from dreamchess.vision import CalibrationError
+
+        if self.webcam is None:
+            return {"ok": False, "error": "no camera: the top camera works with the real robot, not a simulation"}
+        if self.running and self.pending is None:
+            return {"ok": False, "error": "the robot is mid-move: take pictures between moves"}
+        try:
+            if action == "look":
+                status = self.webcam.look()
+            elif action == "corners":
+                status = self.webcam.set_corners(body.get("corners"))
+            elif action == "empty":
+                status = self.webcam.capture_empty(str(body.get("a1") or "bottom-left"))
+            elif action == "start":
+                status = self.webcam.capture_start()
+            elif action == "reset":
+                status = self.webcam.reset()
+            else:
+                return {"ok": False, "error": f"no such step: {action}"}
+        except CalibrationError as err:
+            return {"ok": False, "error": str(err), **self.webcam.status()}
+        self._webcam_seen = None
+        return {"ok": True, **status}
+
+    def camera_move(self, qid: int) -> dict:
+        """The person says they've made their move: read it from the webcam and play it, or say what looks wrong."""
+        from dreamchess.vision import CalibrationError
+        from dreamchess.webcam import read_move
+
+        with self.lock:
+            pending = dict(self.pending) if self.pending else None
+            fen = self.snapshot.get("fen")
+        if self.webcam is None or not self.webcam.status()["calibrated"]:
+            return {"ok": False, "problem": "The webcam isn't calibrated yet.", "fix": "Calibrate it, or type your move."}
+        if not pending or pending["id"] != qid or pending["kind"] != "move" or not fen:
+            return {"ok": False, "problem": "It isn't your move right now.", "fix": ""}
+        try:
+            seen = self.webcam.read()
+        except CalibrationError as err:
+            return {"ok": False, "problem": f"Couldn't read the webcam: {err}", "fix": "Type your move instead."}
+        result = read_move(chess.Board(fen), seen)
+        if "move" in result:
+            self._add({"type": "say", "text": f"The camera read your move: {result['san']}."})
+            return {"ok": self.answer(qid, result["move"]), **result}
+        self._add({"type": "camera_problem", "text": f"{result['problem']} {result['fix']}".strip(),
+                   "spoken": f"{result['problem']} {result['fix']}".strip()})
+        return {"ok": False, **{k: result[k] for k in ("problem", "fix")}}
 
     def brain(self) -> dict:
         """Dream-1 at work: what the agent last asked it, plus the station's own status on the real robot."""
@@ -377,6 +472,7 @@ class Session:
             "mode": "simulation" if self.args.sim else "live robot",
             "checkpoint": self.model(),
             "auto_opponent": bool(getattr(self.args, "auto_opponent", False)),
+            "webcam": self.webcam.status() if self.webcam is not None else None,
         }
 
 
@@ -438,6 +534,10 @@ def make_server(session: Session, port: int) -> ThreadingHTTPServer:
                     return self._json({"ok": session.start()})
                 if self.path == "/stop":
                     return self._json({"ok": True, "message": session.stop_robot()})
+                if self.path == "/webcam/move":
+                    return self._json(session.camera_move(int(body.get("id", -1))))
+                if self.path.startswith("/webcam/"):
+                    return self._json(session.webcam_action(self.path.rsplit("/", 1)[1], body))
             except (ValueError, TypeError) as err:
                 return self._send(400, f"bad request: {err}".encode(), "text/plain")
             self._send(404, b"not found", "text/plain")
@@ -470,6 +570,10 @@ def add_game_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--script", type=int, choices=(1, 2, 3),
                         help="replay collection game 1, 2 or 3: the robot plays the moves Dream-1 was trained on")
     parser.add_argument("--log-dir", default=str(run_robot.GAMES))
+    parser.add_argument("--no-top-camera", dest="top_camera", action="store_false",
+                        help="don't take top-camera pictures: a person checks every step and types every move")
+    parser.add_argument("--top-calibration", default="~/.dream-chess/top-calibration.npz",
+                        help="where the top camera's board calibration is saved, so it survives a restart")
     parser.add_argument("--frames", default="~/.dreamlabs/last-run_inputs",
                         help="where the station saves the camera frames it hands Dream-1")
 

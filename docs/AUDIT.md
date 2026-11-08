@@ -15,7 +15,7 @@ One loop per robot move. The **agent** (`dreamchess/orchestrator.py`) keeps the 
 | Where | Stockfish (`where.py`) | Picks the square, and splits the move into physical steps (a capture is two: the taken piece to the tray, then the move) |
 | How | **Dream-1 via DreamAPI**, through the station (`station_mover.py`) | One plain sentence per step, worded exactly like our training demos, sent to the station, which runs Dream-1's control loop on the arms |
 | Watch | **The supervisor** (`supervisor.py`, new) | During the run, follows the hand from its joint angles and re-prompts Dream-1 the moment it grips or lets go in the wrong place |
-| Check | You, on the page (later: the top camera) | After the run: did the piece land? If not, the agent sends a fix and tries again (up to 6 times), then asks a person |
+| Check | **The checker agent** (`checker.py`, new): a top-camera picture, read into the board | After the run: the verdict in words (*the brown queen went to b2 instead of c2*) goes up to the orchestrator, which sends Dream-1 the correction and asks the checker again, up to 6 times, then a person. Until the camera is calibrated, you answer instead |
 
 Around the loop: the model is started on DreamAPI when the app launches (`tools/warm_dream.py`), so the first move
 doesn't wait out a cold start; time the arms spend held while DreamAPI is slow doesn't count against an attempt;
@@ -52,9 +52,10 @@ calibration fitted to our game 2 demos (100% of their grasps and releases read b
    model, is too little to compare. Xiangwen's model was trained on 20 episodes of game 1 for 1,000 steps. Ours,
    `chess-1k` and `chess-2k`, use all 58 cleaned episodes from both games, and are still training. The fair
    comparison is the same in-distribution moves, several tries each (see below).
-4. **Only a person checks the board.** The station holds all three cameras and shares frames only during runs, so
-   nothing reads the board between moves. The supervisor now watches the hand during a move, but whether the board is
-   right afterwards is still your answer on the page.
+4. **Only a person checked the board.** The station holds all three cameras and saves frames only during runs. Now
+   the checker agent takes its own picture after each step, through a "hold still" run stopped before any motion,
+   and reads the board itself. It needs a one-time calibration of the top camera, and the vision code is untested on
+   the real camera until then: if a calibration read-back fails, it says which squares it couldn't read.
 5. **The board has to stay where it was calibrated.** The hand tracker's square map (`~/.dream-chess/board_fit.json`)
    was fitted on game 2's demos. Today's top camera shows the board within about 1.5 cm of where it was then. If it
    moves, the map is wrong until it's fitted again on demos recorded in the new spot.
@@ -79,5 +80,5 @@ In order:
    little strength for moves that are short and uncrowded. It's 0 now, by choice.
 5. **Collect more of what fails**: longer moves, the far ranks, rooks, and squeezes over the right square. Even 10-20
    more demos aimed at these would help the most.
-6. **Get the station's top camera shared between moves.** Then the check becomes automatic, and your moves are read
-   from the board (the work is ready on the `board-camera-wip` branch).
+6. **Calibrate the top camera** (the page's card, about two minutes). Then every step is checked by a picture, and
+   your moves are read from the board.

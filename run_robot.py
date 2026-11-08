@@ -64,6 +64,9 @@ def plain(line: str) -> str:
             parts.append("expected a piece on " + ", ".join(missing))
         if extra:
             parts.append("found an unexpected piece on " + ", ".join(extra))
+        verdict = rest.split("]: ", 1)[1] if "]: " in rest else ""
+        if verdict:
+            return f"That didn't work: {verdict}. Fixing it."
         return "That didn't work: " + " and ".join(parts) + ". Fixing it."
     if kind == "SEEN":
         return "You " + rest.split(" ", 1)[1] + "."
@@ -146,12 +149,22 @@ def play(args, ask=input, say=print, client=None, clock=time.monotonic, on_event
         station = StationMover(client, attempt_s=args.seconds, checkpoint=args.checkpoint, log=say,
                                hands=hands if watch else None, supervise=supervise)
         mover = AttemptMover(station, eyes, log, clock)
-        perception = eyes
+        # The checker agent: once the top camera is calibrated, a picture after every step decides, not a person.
+        board_camera = getattr(args, "board_camera", None)
+        if board_camera is not None:
+            from dreamchess.checker import CameraChecker
+
+            perception = CameraChecker(board_camera, eyes, log=lambda line: narrate(line))
+        else:
+            perception = eyes
         human = TerminalHuman(eyes, ask, say, record=log)
         opponent = TerminalOpponent(ask, say, on_move=eyes.opponent_moved, record=log,
                                     script=tuple(w for w, _ in script))
         stop_arms = client.stop
-        physical = lambda: dict(eyes.belief)
+        def physical():
+            seen = getattr(board_camera, "last_seen", None) if board_camera is not None else None
+            calibrated = board_camera is not None and board_camera.status()["calibrated"]
+            return dict(seen) if calibrated and seen is not None else dict(eyes.belief)
 
     # Start the engine only once every check has passed. Stockfish runs as a separate program, so
     # an engine started and then abandoned by a refusal would keep this program from exiting.

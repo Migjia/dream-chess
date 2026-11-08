@@ -74,6 +74,19 @@ that slides a rook the length of the board, can be far from anything in the trai
 .venv/bin/python app.py --script 1 --checkpoint "dream-1-ft:..."   # game 1: 20 robot moves, starting 1.e4 Nf6
 ```
 
+**The checker agent: a top-camera picture after every step.** Calibrate it once, from the page's "Calibrate the top
+camera" card: clear the board and capture it (if the board isn't found by itself, click its four corners on the
+picture: a1, h1, h8, a8), then set up the starting position and capture that. From then on, after each step Dream-1
+runs, the checker takes a picture and reads the board. If the move didn't happen (say, *the brown queen went to b2
+instead of c2*), the orchestrator sends Dream-1 the correction, and the checker looks again, until the board is right
+or six tries have failed and a person is asked. Your moves are read the same way: make the move, then press **I've
+made my move**.
+
+A picture is a "hold still" run that the app stops as soon as the station saves its first frame, well before Dream-1's
+first motion, so the arms stay at home. It takes about 4 s, and the picture stays in memory: the app writes nothing.
+The calibration is saved to `~/.dream-chess/top-calibration.npz`; calibrate again if the camera or the board moves.
+Without a calibration, a person checks each step, as before (`--no-top-camera` turns pictures off).
+
 **The supervisor watches every move as it happens** (on by default; `--no-supervise` turns it off). It follows the
 hand from the arms' joint angles, through the board calibration in `~/.dream-chess/board_fit.json`, and re-prompts
 Dream-1 mid-run when it grips an empty square or the wrong piece, or lets go on the wrong square. Once the piece lands

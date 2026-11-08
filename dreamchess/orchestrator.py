@@ -211,7 +211,12 @@ class Orchestrator:
             missing, extra = compare(goal, self._observe())
             if not missing and not extra:
                 return
-            self.log(f"CHECK missing={sorted(missing)} extra={sorted(extra)}")
+            # The checker's verdict, in words, rides on the CHECK line back up to the person and the page:
+            # "the brown queen went to b2 instead of c2". The correction below goes back down to Dream-1.
+            from .checker import describe_failure
+
+            verdict = describe_failure(step, missing, extra, (names or ({}, {}))[1])
+            self.log(f"CHECK missing={sorted(missing)} extra={sorted(extra)}: {verdict}")
 
             can_retry = (
                 attempts < self.config.max_attempts
