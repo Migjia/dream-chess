@@ -103,9 +103,13 @@ class Orchestrator:
             plies += 1
         return self.board.result(claim_draw=True)
 
+    def _names(self) -> dict[str, str]:
+        """Which piece is on each square, by name, as the game has it."""
+        return {chess.square_name(s): chess.piece_name(p.piece_type) for s, p in self.board.piece_map().items()}
+
     def play_robot_turn(self) -> chess.Move:
         # Catch anything bumped since the last move before planning on top of it.
-        self._achieve(occupancy(self.board))
+        self._achieve(occupancy(self.board), names=(self._names(), self._names()))
 
         choice = choose_piece(self.board, self.engine, self.config.margin_cp)
         self.log(
@@ -116,8 +120,16 @@ class Orchestrator:
         dest = choose_destination(self.board, self.engine, choice, self.config.margin_cp)
         self.log(f"WHERE {self.board.san(dest.move)} ({dest.cp:+d} cp, risk {dest.risk})")
 
+        # Follow each piece through the steps, so a correction can say "the brown rook", not just "the brown piece":
+        # the camera only tells colors apart, but the game knows which piece belongs where.
+        names = self._names()
         for step in plan_move(self.board, dest.move):
-            self._achieve(step.expected_after, step)
+            after = dict(names)
+            moved = after.pop(step.source, step.piece_name) if step.source != TRAY else step.piece_name
+            if step.target != TRAY:
+                after[step.target] = moved
+            self._achieve(step.expected_after, step, names=(names, after))
+            names = after
 
         self.board.push(dest.move)
         self.stats.moves += 1
@@ -148,8 +160,10 @@ class Orchestrator:
                 result[sq] = value
         return result
 
-    def _achieve(self, goal: Occupancy, first: Step | None = None) -> None:
-        """Keep acting until the camera shows `goal`, or escalate to a person."""
+    def _achieve(self, goal: Occupancy, first: Step | None = None,
+                 names: tuple[dict[str, str], dict[str, str]] | None = None) -> None:
+        """Keep acting until the camera shows `goal`, or escalate to a person. `names` says which piece is on each
+        square before and after this step, so a correction can name the piece it moves."""
         step = first
         attempts = 0
         human_calls = 0
@@ -173,7 +187,7 @@ class Orchestrator:
                 attempts < self.config.max_attempts
                 and len(missing) + len(extra) <= self.config.max_auto_fix_squares
             )
-            step = self._corrective_step(missing, extra, goal, first) if can_retry else None
+            step = self._corrective_step(missing, extra, goal, first, names) if can_retry else None
             if step is not None:
                 self.stats.corrections += 1
                 continue
@@ -186,8 +200,10 @@ class Orchestrator:
             self.log(f"HELP  asking a person to fix the board: missing={sorted(missing)} extra={sorted(extra)}")
             self.human.request_fix(f"Please fix the board. Missing: {missing}. Extra: {extra}.", goal)
 
-    def _corrective_step(self, missing: Occupancy, extra: Occupancy, goal: Occupancy, first: Step | None) -> Step | None:
+    def _corrective_step(self, missing: Occupancy, extra: Occupancy, goal: Occupancy, first: Step | None,
+                         names: tuple[dict[str, str], dict[str, str]] | None = None) -> Step | None:
         """Pick the next physical action, or None if only a person can fix this."""
+        before, after = names or ({}, {})
         for source, color in sorted(extra.items()):
             candidates = [sq for sq, c in missing.items() if c == color and sq != source]
             if candidates:
@@ -195,10 +211,11 @@ class Orchestrator:
                     candidates,
                     key=lambda sq: (chess.square_distance(chess.parse_square(sq), chess.parse_square(source)), sq),
                 )
-                return make_step(color, "piece", source, target, self.robot_color, goal)
+                # The piece that belongs on the target is the one to bring there.
+                return make_step(color, after.get(target, "piece"), source, target, self.robot_color, goal)
         if extra:  # a stray with nowhere to go, e.g. a capture that wasn't removed
             source, color = sorted(extra.items())[0]
-            return make_step(color, "piece", source, TRAY, self.robot_color, goal)
+            return make_step(color, before.get(source, "piece"), source, TRAY, self.robot_color, goal)
         if first is not None and first.source == TRAY and first.target in missing:
             return first  # the spare queen didn't arrive, so try again
         return None  # a piece vanished from view, likely off the table

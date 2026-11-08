@@ -129,6 +129,20 @@ def test_recovers_from_failed_attempt(failure):
     assert not human.calls
 
 
+@pytest.mark.parametrize("failure", ["miss", "off_by_one"])
+def test_a_retry_names_the_piece_not_just_its_color(failure):
+    # The camera only tells colors apart, but the game knows which piece belongs where, and Dream-1 was trained
+    # on prompts that name the piece ("the brown rook on square b8"), so a retry should too.
+    prompts = []
+    agent, world, mover, human = build(script=[failure, "success"], fen="1r4k1/8/8/8/8/8/r7/6K1 b - - 1 1",
+                                       color=chess.BLACK)
+    agent.log = prompts.append
+    agent.play_robot_turn()
+    hows = [p for p in prompts if p.startswith("HOW")]
+    assert len(hows) == 2 and all("brown rook" in p for p in hows), hows
+    assert world.occ == occupancy(agent.board)
+
+
 def test_returns_a_knocked_neighbor_to_its_square():
     agent, world, _, human = build(fen="4k3/8/8/8/8/8/PP6/R3K3 w - - 0 1")
     goal = occupancy(agent.board)
