@@ -191,3 +191,33 @@ def test_full_game_keeps_table_and_board_in_sync(seed, color):
     assert world.occ == occupancy(agent.board)
     assert agent.board.ply() == 30 or agent.board.is_game_over(claim_draw=True)
     assert agent.board.is_valid()
+
+
+# --- Describing squares the way the robot sees them ---
+
+def test_squares_are_described_from_the_robots_seat():
+    from dreamchess.where import describe_path, describe_square
+
+    # Brown sits behind rank 8 with the a-file on its right.
+    assert describe_square("b8", chess.BLACK) == "in the row nearest you, the second square in from your right"
+    assert describe_square("h1", chess.BLACK) == "in the row farthest from you, the square at your left edge"
+    assert describe_square("e4", chess.BLACK) == "in the fifth row from you, the fourth square in from your left"
+    assert describe_path("b8", "b1", chess.BLACK) == "seven rows straight away from you"
+    assert describe_path("g8", "f6", chess.BLACK) == "two rows away from you and one column to your right"
+    # White, behind rank 1, has the h-file on its right.
+    assert describe_square("h1", chess.WHITE) == "in the row nearest you, the square at your right edge"
+
+
+def test_the_prompt_styles():
+    from dreamchess import where
+
+    squares = where.write_prompt("right", "b", "rook", "b8", "b1", style="squares")
+    assert squares == ("Using your right arm, pick up the brown rook on square b8 and place it upright in the center "
+                       "of square b1. Move slowly and do not touch any other piece.")
+    both = where.write_prompt("right", "b", "rook", "b8", "b1", style="both")
+    assert "on square b8 (in the row nearest you, the second square in from your right)" in both
+    assert both.endswith("seven rows straight away from you. Move slowly and do not touch any other piece.")
+    spatial = where.write_prompt("right", "b", "rook", "b8", "b1", style="spatial")
+    assert "b8" not in spatial and "b1" not in spatial and "row nearest you" in spatial
+    tray = where.write_prompt("right", "w", "pawn", "d3", where.TRAY, style="both")
+    assert tray.endswith("put it in the tray on your right. Move slowly and do not touch any other piece.")
