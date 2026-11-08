@@ -32,9 +32,10 @@ class Engine(Protocol):
 class StockfishEngine:
     name = "stockfish"
 
-    def __init__(self, path: str, think_time: float = 0.3):
+    def __init__(self, path: str, think_time: float = 0.3, depth: int | None = None):
         self._engine = chess.engine.SimpleEngine.popen_uci(path)
-        self._limit = chess.engine.Limit(time=think_time)
+        # A time limit plays well on any machine; a depth limit gives the same answer on any machine (for tests).
+        self._limit = chess.engine.Limit(depth=depth) if depth else chess.engine.Limit(time=think_time)
 
     def rank(self, board: chess.Board, moves: Iterable[chess.Move]) -> list[ScoredMove]:
         moves = list(moves)

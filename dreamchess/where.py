@@ -48,15 +48,77 @@ def arm_for(square: str, robot_color: chess.Color) -> str:
     return "left" if queenside == (robot_color == chess.WHITE) else "right"
 
 
-def write_prompt(arm: str, color: str, piece_name: str, source: str, target: str) -> str:
+# How a square is named in the prompt (set from the app's --prompt-style):
+#   "squares": "on square b8", the wording our demos were recorded with;
+#   "both":    "on square b8 (in the row nearest you, second square in from your right)";
+#   "spatial": the description alone.
+# Dream-1 sees the board through its cameras but has no reason to know what "b8" means: the printed edge labels are
+# tiny in its pictures. Rows and columns counted from where it sits are things it can see.
+PROMPT_STYLE = "squares"
+ROBOT_SIDE = chess.BLACK  # which side's edge the robot sits behind, for "nearest you" and "your right"
+ORDINALS = ["", "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth"]
+NUMBERS = ["no", "one", "two", "three", "four", "five", "six", "seven"]
+
+
+def _row_col(square: str, side: chess.Color) -> tuple[int, int]:
+    """(row counted from the robot's edge, 1 = nearest; column counted from the robot's right, 1 = rightmost)."""
+    file, rank = "abcdefgh".index(square[0]), int(square[1])
+    if side == chess.BLACK:  # behind rank 8, facing White: the a-file is on its right
+        return 9 - rank, file + 1
+    return rank, 8 - file  # behind rank 1: the h-file is on its right
+
+
+def describe_square(square: str, side: chess.Color = None) -> str:
+    """Where a square is, as the robot sees it: "in the row nearest you, second square in from your right"."""
+    row, col = _row_col(square, ROBOT_SIDE if side is None else side)
+    rows = "the row nearest you" if row == 1 else "the row farthest from you" if row == 8 else         f"the {ORDINALS[row]} row from you"
+    if col <= 4:
+        cols = "the square at your right edge" if col == 1 else f"the {ORDINALS[col]} square in from your right"
+    else:
+        left = 9 - col
+        cols = "the square at your left edge" if left == 1 else f"the {ORDINALS[left]} square in from your left"
+    return f"in {rows}, {cols}"
+
+
+def describe_path(source: str, target: str, side: chess.Color = None) -> str:
+    """How far and which way: "seven rows straight away from you", "two rows away from you and one to your right"."""
+    side = ROBOT_SIDE if side is None else side
+    (r0, c0), (r1, c1) = _row_col(source, side), _row_col(target, side)
+    rows, right = r1 - r0, c0 - c1  # rows away from the robot; columns toward its right (its right is column 1)
+    away = "away from you" if rows > 0 else "toward you"
+    if rows and not right:
+        return f"{NUMBERS[abs(rows)]} row{'s' if abs(rows) > 1 else ''} straight {away}"
+    parts = []
+    if rows:
+        parts.append(f"{NUMBERS[abs(rows)]} row{'s' if abs(rows) > 1 else ''} {away}")
+    if right:
+        parts.append(f"{NUMBERS[abs(right)]} column{'s' if abs(right) > 1 else ''} to your {'right' if right > 0 else 'left'}")
+    return " and ".join(parts)
+
+
+def _where(square: str, style: str) -> str:
+    if style == "spatial":
+        return f"the square {describe_square(square)}"
+    if style == "both":
+        return f"square {square} ({describe_square(square)})"
+    return f"square {square}"
+
+
+def write_prompt(arm: str, color: str, piece_name: str, source: str, target: str, style: str | None = None) -> str:
     """The text Dream-1 receives. Tune this wording on the real robot first."""
+    style = style or PROMPT_STYLE
     item = f"{color_word(color)} {piece_name}".strip()
     # There's a tray beside each arm, so each arm uses the one on its own side.
     if source == TRAY:
         pick = f"pick up the spare {item} from the tray on your {arm}"
     else:
-        pick = f"pick up the {item} on square {source}"
-    place = f"put it in the tray on your {arm}" if target == TRAY else f"place it upright in the center of square {target}"
+        pick = f"pick up the {item} on {_where(source, style)}"
+    if target == TRAY:
+        place = f"put it in the tray on your {arm}"
+    else:
+        place = f"place it upright in the center of {_where(target, style)}"
+        if style != "squares" and source != TRAY:
+            place += f", {describe_path(source, target)}"
     return f"Using your {arm} arm, {pick} and {place}. Move slowly and do not touch any other piece."
 
 
