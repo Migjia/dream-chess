@@ -83,6 +83,15 @@ def describe_position(board: chess.Board) -> str:
 def play(args, ask=input, say=print, client=None, clock=time.monotonic, on_event=None, on_ready=None) -> dict:
     """Play one game. `on_event` receives every logged event; `on_ready(board, physical, stop_arms)` is called once
     the game is set up, with a function returning the physical board as the robot currently believes it."""
+    script = ()
+    if getattr(args, "script", None):
+        from dreamchess.scripts import load_games
+
+        game = load_games()[args.script]
+        script = tuple(game)
+        args.fen = chess.STARTING_FEN  # the scripted games start from the normal starting position
+        say(f"Replaying collection game {args.script}: you play White's moves from the script, and the robot plays "
+            "the brown moves Dream-1 was trained on.")
     board = chess.Board(args.fen)
     label = args.label or datetime.datetime.now().strftime("game-%Y%m%d-%H%M%S")
     log = GameLog(Path(args.log_dir) / f"{label}.jsonl", listener=on_event)
@@ -100,7 +109,7 @@ def play(args, ask=input, say=print, client=None, clock=time.monotonic, on_event
             opponent = RandomOpponent(world, seed=args.seed + 2)
         else:
             opponent = TerminalOpponent(ask, say, on_move=lambda after: setattr(world, "occ", occupancy(after)),
-                                        record=log)
+                                        record=log, script=tuple(w for w, _ in script))
         stop_arms = lambda: None
         physical = lambda: dict(world.occ)
     else:
@@ -121,7 +130,8 @@ def play(args, ask=input, say=print, client=None, clock=time.monotonic, on_event
         mover = AttemptMover(station, eyes, log, clock)
         perception = eyes
         human = TerminalHuman(eyes, ask, say, record=log)
-        opponent = TerminalOpponent(ask, say, on_move=eyes.opponent_moved, record=log)
+        opponent = TerminalOpponent(ask, say, on_move=eyes.opponent_moved, record=log,
+                                    script=tuple(w for w, _ in script))
         stop_arms = client.stop
         physical = lambda: dict(eyes.belief)
 
@@ -137,7 +147,7 @@ def play(args, ask=input, say=print, client=None, clock=time.monotonic, on_event
         log({"type": "agent", "text": line})
 
     # The person answers once per check, so there's nothing to vote across.
-    config = Config(frames_per_observation=1 if eyes is not None else 3)
+    config = Config(frames_per_observation=1 if eyes is not None else 3, forced_moves=tuple(b for _, b in script))
     try:
         agent = Orchestrator(board, ROBOT, engine, mover, perception, human, opponent, config=config, log=narrate)
     except Exception:
@@ -189,6 +199,8 @@ def main() -> None:
     parser.add_argument("--checkpoint", help="the model to run, such as a fine-tuned ID; default: the base model")
     parser.add_argument("--stockfish", help="path to Stockfish (or set STOCKFISH_PATH)")
     parser.add_argument("--max-plies", type=int, default=None, help="stop after this many half-moves")
+    parser.add_argument("--script", type=int, choices=(1, 2, 3),
+                        help="replay collection game 1, 2 or 3: the robot plays the moves Dream-1 was trained on")
     parser.add_argument("--station", default="http://127.0.0.1:8091")
     parser.add_argument("--log-dir", default=str(GAMES))
     parser.add_argument("--sim", action="store_true", help="rehearse with a simulated robot")

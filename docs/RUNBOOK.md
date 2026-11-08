@@ -65,7 +65,17 @@ the piece landed. **Stop the arms** on the page, or Ctrl+C on the NUC, stops the
 with `--frames`), and "The robot's brain" shows the station's status. If the brain says *Station offline*, the
 station isn't running. The board itself still comes from your answers until the station shares its camera.
 
-For a short first test, start from a mate in two with `--fen "<position>"`.
+**To test what the model learned, replay a collection game** (`--script 1`, `2` or `3`). You play White's moves
+from the script, which the page suggests and fills in. The robot plays that game's brown moves, so every prompt is
+one Dream-1 was fine-tuned on, with the pieces where they were in its demos. Stockfish's own picks, like a mate in one
+that slides a rook the length of the board, can be far from anything in the training data.
+
+```bash
+.venv/bin/python app.py --script 1 --checkpoint "dream-1-ft:..."   # game 1: 20 robot moves, starting 1.e4 Nf6
+```
+
+To set up from the robot's side, switch the page's board to **From the robot's side**, so each piece lands on the
+right file. A rook on b2 instead of a2 puts two rooks on the b-file, and the model may reach for the wrong one.
 
 ## 5. Notes
 

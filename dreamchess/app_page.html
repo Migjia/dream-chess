@@ -150,6 +150,9 @@ button, input { font: inherit; color: inherit; }
 .pc.w { color: var(--ivory); -webkit-text-stroke: 1.2px #2b2118; text-shadow: 0 2px 2px rgba(0,0,0,.25); }
 .pc.b { color: var(--brown); -webkit-text-stroke: .6px #2b160a; text-shadow: 0 2px 2px rgba(0,0,0,.3); }
 .mini .pc { font-size: clamp(13px, 2.1vw, 22px); }
+/* Seen from the robot's side: the board turns around, the pieces and labels stay upright. */
+.board.flipped { transform: rotate(180deg); }
+.board.flipped .pc, .board.flipped .coord, .board.flipped .dot { transform: rotate(180deg); }
 .mini .pc.unknown { opacity: .85; }
 .setup-tag { display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); font-size: 12px; font-weight: 600; vertical-align: 2px; }
 .dot { width: 56%; aspect-ratio: 1; border-radius: 50%; box-shadow: 0 1px 2px rgba(0,0,0,.35); }
@@ -306,9 +309,12 @@ button, input { font: inherit; color: inherit; }
     <section class="card" aria-labelledby="board-h">
       <div class="boardhead"><h2 id="board-h">The game<span class="setup-tag" id="setuptag" hidden>Set up like this</span></h2>
         <span><span class="turn" id="turn"></span> <span class="incheck" id="checkflag"></span></span></div>
-      <div class="side"><span>Robot · Brown</span><span id="robotmove"></span></div>
+      <div class="row" style="margin-bottom:8px"><div class="seg" role="group" aria-label="Which side to see the board from" id="sideseg">
+        <button type="button" aria-pressed="true" data-side="white">From your side</button>
+        <button type="button" aria-pressed="false" data-side="robot">From the robot's side</button></div></div>
+      <div class="side"><span id="far-side">Robot · Brown</span><span id="robotmove"></span></div>
       <div class="board" id="board"></div>
-      <div class="side"><span>You · White</span><span id="lastmove"></span></div>
+      <div class="side"><span id="near-side">You · White</span><span id="lastmove"></span></div>
       <div class="ask" id="ask" aria-live="polite">
         <div class="q" id="askq">Starting...</div>
         <div class="hint" id="askhint"></div>
@@ -701,6 +707,9 @@ function friendly(p) {
   if (p.kind === "yesno") return [t.replace(/\s*y\/n:?\s*$/i, "").replace(/\?*$/, "?"), "Look at the real board and answer for what actually happened."];
   if (p.kind === "where") return ["Where did the piece end up?", "Type its square, or pick one of the options."];
   if (p.kind === "bumps") return ["Did anything else get knocked out of place?", "If so, type the square it was on, then where it is now, like e4 e3."];
+  const script = t.match(/\[script: play (\S+), (\w\d) to (\w\d)\]/);
+  if (p.kind === "move" && script) return [`Your move: ${script[1]} (${script[2]} to ${script[3]}), from the script.`,
+    "The script keeps the robot's replies to moves Dream-1 was trained on. Make it on the real board, then enter it here."];
   if (p.kind === "move") return ["Your move.", "Make it on the real board, then enter it here: type it, or tap a white piece and then its square."];
   return [t, ""];
 }
@@ -726,6 +735,8 @@ function showQuestion(p, st) {
   else if (p.kind === "where") { row.append(...input("square, e.g. f5", "Send")); row.append(button("Didn't move", "same"), button("In the tray", "tray"), button("Off the board", "gone")); }
   else { row.append(...input("", "Send")); }
   const box = $("answerbox"); if (box) box.focus({ preventScroll: true });
+  const scripted = p.prompt.match(/\[script: play (\S+),/);
+  if (box && scripted) box.value = scripted[1];
 }
 $("board").addEventListener("click", ev => {
   if (askKind !== "move") return;
@@ -747,6 +758,17 @@ $("theme").onclick = () => {
   showTheme();
 };
 showTheme();
+// Setting up from the robot's side is where pieces land on the wrong file (a2 for b2), so let the board turn around.
+function showSide(side) {
+  const robot = side === "robot";
+  $("board").classList.toggle("flipped", robot); $("seen").classList.toggle("flipped", robot);
+  $("far-side").textContent = robot ? "You · White" : "Robot · Brown";
+  $("near-side").textContent = robot ? "Robot · Brown (the arms)" : "You · White";
+  document.querySelectorAll("#sideseg button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.side === side)));
+  try { localStorage.setItem("dream-chess-side", side); } catch (e) {}
+}
+document.querySelectorAll("#sideseg button").forEach(b => b.onclick = () => showSide(b.dataset.side));
+try { showSide(localStorage.getItem("dream-chess-side") || "white"); } catch (e) { showSide("white"); }
 $("newgame").onclick = async () => { $("banner").hidden = true; await post("/new"); };
 $("stoparms").onclick = async () => { const r = await post("/stop"); log(r.message || "Stop sent."); };
 
