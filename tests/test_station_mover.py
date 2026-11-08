@@ -61,10 +61,9 @@ class FakeStation:
             if not isinstance(body.get("steps"), int) or body["steps"] < 1:
                 return 400, {"error": "steps must be a whole number of at least 1"}
             self.run += 1
-            self.state = "starting"
-            self.chunks = 0
+            self.state = "starting"  # the real station still reports the last run's chunks until this one runs
         self._cancel.clear()
-        self._later(0.02, lambda: self._set("running"))
+        self._later(0.02, self._running)
         if self.never_answers:
             return 200, self.status()  # runs with no actions until stopped
         if self.warm_s > self.move_after_s:
@@ -80,6 +79,10 @@ class FakeStation:
             self._later(self.run_s, lambda: (self._set("idle"), self._set("homing"),
                                              self._later(self.home_s, lambda: self._set("idle"))))
         return 200, self.status()
+
+    def _running(self):
+        with self.lock:
+            self.state, self.chunks = "running", 0
 
     def _first_action(self):
         with self.lock:
@@ -293,3 +296,14 @@ def test_time_the_arms_wait_on_dreamapi_doesnt_count_against_the_attempt(station
 
 def test_the_default_attempt_allows_a_minute_of_motion():
     assert StationMover(log=lambda _: None).attempt_s == 60.0
+
+
+def test_the_last_runs_actions_dont_count_as_this_ones(station):
+    # Right after a start the station still reports the previous run's chunks. A slow-starting model must not be
+    # mistaken for one that has already answered, or the clock starts too early and cuts the warm-up off.
+    station.chunks = 40  # what the last run (say, from Dream's live view) left behind
+    station.warm_s = 0.6
+    m = mover(station, attempt_s=0.1, grace_s=0.2)
+    m.execute(STEP)
+    assert posts(station, "/stop") == []
+    assert len(posts(station, "/start")) == 2  # the warm-up was waited out, then the step ran again

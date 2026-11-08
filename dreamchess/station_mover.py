@@ -140,12 +140,14 @@ class StationMover:
                 stalled_s += now - last_poll
             last_stalls, last_poll = stalls if isinstance(stalls, int) else last_stalls, now
             reports_chunks = reports_chunks or "chunks" in status
-            if (status.get("chunks") or 0) > 0 and first_action is None:
+            # Only a running run's count is this run's: while it's still starting, the station reports the last one's.
+            if status.get("state") == "running" and (status.get("chunks") or 0) > 0 and first_action is None:
                 first_action = self.clock()
             if status.get("state") not in BUSY:
                 break
             waiting = reports_chunks and first_action is None
-            limit = (started + self.first_answer_s) if waiting                 else (first_action or started) + self.attempt_s + self.grace_s + stalled_s
+            limit = (started + self.first_answer_s) if waiting else (
+                (first_action or started) + self.attempt_s + self.grace_s + stalled_s)
             if now >= limit:
                 self.log("      Dream-1 never answered: stopping the run" if waiting
                          else "      the station run went past its time limit: stopping it")
@@ -157,7 +159,7 @@ class StationMover:
                 self.log(f"      waiting for Dream-1's first answer ({now - started:.0f} s): the model is starting "
                          "on DreamAPI, and the arms wait until it answers")
             self.sleep(self.poll_s)
-        moved = first_action is not None or not reports_chunks or (status.get("chunks") or 0) > 0
+        moved = first_action is not None or not reports_chunks
         return status, moved
 
     def execute(self, step: Step) -> None:
