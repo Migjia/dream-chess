@@ -439,6 +439,7 @@ def add_game_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--log-dir", default=str(run_robot.GAMES))
     parser.add_argument("--frames", default="~/.dreamlabs/last-run_inputs",
                         help="where the station saves the camera frames it hands Dream-1")
+    run_robot.add_voice_args(parser)
 
 
 def main() -> None:

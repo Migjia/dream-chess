@@ -23,6 +23,7 @@ from dreamchess.core import color_word, occupancy
 from dreamchess.engine import make_engine
 from dreamchess.human_eyes import AttemptMover, GameQuit, HumanEyes, TerminalHuman, TerminalOpponent
 from dreamchess.orchestrator import Config, GameAborted, Orchestrator
+from dreamchess.voice import make_voice
 
 GAMES = Path(__file__).parent / "games"
 ROBOT = chess.BLACK
@@ -70,6 +71,14 @@ def plain(line: str) -> str:
     if kind == "HELP":
         return "I can't fix this alone, so I'm asking a person for help."
     return line
+
+
+def add_voice_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--voice", choices=("none", "print", "livekit"), default="none",
+                        help="the robot says its moves and reacts to yours: print them, or speak over LiveKit")
+    parser.add_argument("--voice-room", help="with --voice livekit, the LiveKit room (default dream-chess)")
+    parser.add_argument("--voice-model", help='with --voice livekit, the TTS voice, "provider/model:voice"')
+    parser.add_argument("--voice-local", action="store_true", help="with --voice livekit, also play it here")
 
 
 def describe_position(board: chess.Board) -> str:
@@ -136,12 +145,24 @@ def play(args, ask=input, say=print, client=None, clock=time.monotonic, on_event
         say(plain(line))
         log({"type": "agent", "text": line})
 
+    def spoken(line: str) -> None:
+        say(line)
+        if line.startswith("Robot says: "):  # not the voice's own status lines
+            log({"type": "voice", "text": line.removeprefix("Robot says: ")})
+
     # The person answers once per check, so there's nothing to vote across.
     config = Config(frames_per_observation=1 if eyes is not None else 3)
+    voice = None
     try:
-        agent = Orchestrator(board, ROBOT, engine, mover, perception, human, opponent, config=config, log=narrate)
-    except Exception:
+        voice = make_voice(getattr(args, "voice", "none"), out=spoken, room=getattr(args, "voice_room", None),
+                           model=getattr(args, "voice_model", None), local=getattr(args, "voice_local", False),
+                           seed=args.seed)
+        agent = Orchestrator(board, ROBOT, engine, mover, perception, human, opponent, config=config, log=narrate,
+                             voice=voice)
+    except BaseException:
         engine.close()
+        if voice is not None:
+            voice.close()
         raise
     log({"type": "game_start", "fen": board.fen(), "robot": "brown", "engine": engine.name,
          "sim": bool(args.sim), "checkpoint": args.checkpoint, "seconds_per_attempt": args.seconds})
@@ -162,6 +183,7 @@ def play(args, ask=input, say=print, client=None, clock=time.monotonic, on_event
         ending = f"aborted: {err}"
     finally:
         engine.close()
+        voice.close()  # lets its last line finish
 
     minutes = (clock() - started) / 60
     stats = agent.stats
@@ -193,6 +215,7 @@ def main() -> None:
     parser.add_argument("--sim", action="store_true", help="rehearse with a simulated robot")
     parser.add_argument("--sim-success", type=float, default=0.4, help="how often the simulated robot succeeds")
     parser.add_argument("--seed", type=int, default=1)
+    add_voice_args(parser)
     play(parser.parse_args())
 
 
