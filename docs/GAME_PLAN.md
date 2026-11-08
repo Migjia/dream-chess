@@ -1,72 +1,56 @@
 # Game plan
 
-**Goal:** the robot plays a short mate-in-2 or mate-in-3 from a sparse position, and recovers
-on camera from at least one failed grab. A sparse board gives the gripper room, and a short
-game fits the time: one benchmark suggests each move could take several minutes.
+**Goal:** the robot, playing Brown, finishes a short mate-in-2 or mate-in-3 against a person, and
+recovers from at least one failed move along the way. A short game fits the time: with retries,
+each robot move could take a few minutes.
 
-## The agents
-
-Only How uses a learned model. Chess and safety decisions stay in plain code, which is faster,
-testable, and can't hallucinate an illegal move.
-
-| Agent | Decides | Tool | Status |
-| --- | --- | --- | --- |
-| What | Which piece to move | Stockfish scores every legal move, with a penalty for crowded pieces | Built |
-| Where | Which square, and the physical steps | Stockfish, chess rules, and a prompt template | Built |
-| How | How the arms move | Dream-1 through DreamAPI | Written, not run on hardware |
-| Check | Whether the move happened | RealSense depth and color | Written, not run on hardware |
-| Orchestrator | What happens next | A plain Python loop | Built |
-
-An LLM is optional and comes last. The best places for one are commentary for the demo and
-choosing how to recover from unusual failures.
+See the [README](../README.md) for how the system works.
 
 ## Who does what
 
-Assign names at the first team check-in.
+Assign names at the next team check-in.
 
-| Person | Owns | First task | Done when |
+| Person | Owns | Next task | Done when |
 | --- | --- | --- | --- |
-| A: Station and How | `dream_mover.py`, the `Station` adapter, API key and credits | Run `tools/inspect_station.sh` | One real pick-and-place runs through `DreamMover` |
-| B: Check | `vision.py`, `camera.py`, calibration | Find the top camera and save a snapshot | `vision_tool.py check` reads all 64 squares on the real board |
-| C: What, Where, and integration | `what.py`, `where.py`, `orchestrator.py`, `run_robot.py` | Install Stockfish and run a game with it | The full loop runs with a terminal-driven opponent |
-| D: Physical setup, prompts, and demo | Board, pieces, prompt log, video, pitch | Tape down the board and measure the gripper against the piece gaps | A rehearsed demo and a backup video exist |
+| A: Station and How | `station_mover.py`, station access, API key and credits | Get approval to add the camera plug-in to the station | The station shares its top camera with our app |
+| B: Check | `vision.py`, `camera.py`, calibration | Calibrate the top camera once the station shares it | `vision_tool.py check` reads all 64 squares on the real board |
+| C: What, Where, and integration | `what.py`, `where.py`, `orchestrator.py`, `run_robot.py` | Get Stockfish installed on the NUC, then choose the demo position | A full game finishes with `run_robot.py` |
+| D: Physical setup, eval, and demo | Board, trays, the eval, video, pitch | Set up the board and run the baseline eval with Xiangwen | Baseline results are committed, and a backup video exists |
+| Xiangwen: Dream-1 | The eval runs and fine-tuning | Run the baseline eval, then plan data collection from its report | A fine-tune beats the baseline, or we know it doesn't |
 
-Everyone can stop the arms. Whoever runs a motion test stands at the e-stop.
+Everyone can stop the arms. Whoever runs a test that moves the arms keeps a hand on the e-stop.
 
 ## Test order
 
-Each stage has to pass before the next, and nothing moves until stage 5.
+Each stage has to pass before the next.
 
-| Stage | Test | Arms move? | Who runs it | Pass means |
+| Stage | Test | Arms move? | Pass means | Status |
 | --- | --- | --- | --- | --- |
-| 1 | Run `tools/inspect_station.sh` | No | Anyone | We know the Python version, cameras, and what holds them |
-| 2 | Install, then run `pytest` on the NUC | No | A | All tests pass on the station |
-| 3 | Calibrate and check the top camera | No | B | All 64 squares read correctly |
-| 4 | `DreamMover` with `dry_run=True`, with `dream.DebugView` open | No | A | The page shows the right cameras, state, and prompt |
-| 5 | `python -m dream.check_loop` | **Yes** | **A person at the e-stop** | Every line prints PASS |
-| 6 | One piece on an empty board, trying prompt wordings | **Yes** | A and D | Dream-1 reaches the right square |
-| 7 | A pawn with neighbors on both sides | **Yes** | A and D | We know how crowded the demo can be |
-| 8 | Full loop on the demo position | **Yes** | Everyone | The game finishes with the board correct |
-| 9 | Record a backup video | **Yes** | D | Saved somewhere safe |
+| 1 | Survey the NUC with `tools/inspect_station.sh` | No | We know what runs the arms and cameras | ✅ Done |
+| 2 | Install our app on the NUC and run the tests | No | Tests pass there | ✅ Done |
+| 3 | Dream-1 baseline eval: `eval_dream.py` | **Yes** | 28 trials scored, with notes on every failure | ▶️ Next |
+| 4 | First real game with a person as the camera: `run_robot.py` on a short mate | **Yes** | The game finishes, and the log shows where time went | After stage 3 |
+| 5 | Camera check on the real board | No | All 64 squares read correctly | Needs station approval |
+| 6 | Full games with the camera, on the demo position | **Yes** | The demo game finishes correctly 3 times | After stages 4 and 5 |
+| 7 | Record a backup video | **Yes** | Saved somewhere safe | As soon as one game works |
 
-To view the debug page over SSH, forward its port: `ssh -L <port>:localhost:<port> user@nuc`.
+If Xiangwen fine-tunes a model, re-run stage 3 with it before using it in stage 6.
 
 ## Reading the first results
 
-- **If Dream-1 doesn't understand square names:** try "the pawn nearest your left hand", or put
-  large labels on the demo squares. This is the biggest open question, so test it early.
-- **If a crowded pawn keeps failing:** build the demo so no piece has close neighbors.
-- **If depth is too noisy for pawns:** use `--no-depth`, and mount or angle the camera to look
-  as straight down as possible.
+- **Dream-1 often goes to the wrong square:** fine-tune on demos spread across many squares, using
+  our exact sentences.
+- **One arm or one area keeps failing:** focus the demos there, and choose a demo position that
+  avoids it.
+- **Crowded pieces keep getting knocked over:** pick a demo position with space around the pieces.
+- **Many attempts time out:** raise the limit with `--seconds 45`.
 
-## Still to write
+## Still to do
 
-- `Station`, the small adapter for the NUC's arms and cameras, once stage 1 shows how they work.
-- `run_robot.py`, which connects the real pieces, a terminal prompt for human help, and an
-  "opponent has moved" prompt.
-- A safe `home()`: lift straight up, then clear the camera, and never carry off a gripped piece.
-- Try the `region` setting to keep the arms above the table, and check that it applies with
-  `head: "joint"`.
+- Install Stockfish on the NUC (`sudo apt install stockfish` needs the admin password).
+- Add the camera plug-in to the station's configuration, once approved, then calibrate.
+- A piece tracker, so fix prompts and help requests name the piece ("the brown knight"), not
+  just its color.
 
 ## Repo rules
 
