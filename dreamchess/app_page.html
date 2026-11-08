@@ -538,7 +538,7 @@ const squares = {}, seenSquares = {};
 function buildBoard(el, store, mini) {
   for (let r = 8; r >= 1; r--) for (let f = 0; f < 8; f++) {
     const name = FILES[f] + r, sq = document.createElement("div");
-    sq.className = "sq " + ((f + r) % 2 === 1 ? "l" : "d"); sq.dataset.sq = name;
+    sq.className = "sq " + ((f + r) % 2 === 1 ? "d" : "l"); sq.dataset.sq = name;  // a1 (file 0, rank 1) is dark
     if (!mini && f === 0) { const c = document.createElement("span"); c.className = "coord rk"; c.textContent = r; sq.append(c); }
     if (!mini && r === 1) { const c = document.createElement("span"); c.className = "coord fl"; c.textContent = FILES[f]; sq.append(c); }
     el.append(sq); store[name] = sq;
