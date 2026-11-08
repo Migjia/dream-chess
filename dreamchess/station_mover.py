@@ -75,6 +75,10 @@ class StationClient:
     def reset(self) -> dict:
         return self._request("POST", "/reset", {})
 
+    def set_prompt(self, prompt: str) -> dict:
+        """Change the instruction of the run in progress: the arms keep moving."""
+        return self._request("POST", "/prompt", {"prompt": prompt})
+
 
 class StationMover:
     """A Mover for the orchestrator that runs each step as one station run."""
@@ -88,6 +92,8 @@ class StationMover:
         grace_s: float = 20.0,
         first_answer_s: float = FIRST_ANSWER_WAIT_S,
         restarts: int = 3,
+        hands=None,
+        supervise: Callable[[Step], object] | None = None,
         log: Callable[[str], None] = print,
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
@@ -100,6 +106,10 @@ class StationMover:
         self.grace_s = grace_s  # time to start up, home, and answer, beyond the run itself
         self.first_answer_s = first_answer_s  # how long Dream-1 may take to send its first action
         self.restarts = restarts  # runs to start again because the model answered too late for the arms to move
+        # Watching the move as it happens: the hand tracker's samples, and a supervisor per step that re-prompts
+        # Dream-1 mid-run when the hand grips or lets go in the wrong place (dreamchess/supervisor.py).
+        self.hands, self.supervise = hands, supervise
+        self.last_note = ""
         self.log = log
         self.clock = clock
         self.sleep = sleep
@@ -125,6 +135,11 @@ class StationMover:
 
         The time limit counts from Dream-1's first action, not from the start: until then the model may still be
         starting on DreamAPI, the station waits with the arms still, and there is nothing to stop."""
+        supervisor = self.supervise(step) if (self.supervise is not None and self.hands is not None
+                                              and getattr(self.hands, "ready", False)) else None
+        mark = self.hands.mark() if supervisor is not None else 0
+        this_run = False  # the tracker's samples count once it reports this run's start
+        extra_s = 0.0  # each correction gets the time of a fresh attempt
         self.client.start(step.prompt, self.steps, self.checkpoint)
         started = self.clock()
         first_action = None
@@ -145,9 +160,27 @@ class StationMover:
                 first_action = self.clock()
             if status.get("state") not in BUSY:
                 break
+            if supervisor is not None and status.get("state") == "running":
+                samples, mark = self.hands.since(mark)
+                finished = False
+                for sample in samples:
+                    if sample.get("run_start"):
+                        this_run = True
+                        continue
+                    action = supervisor.feed(sample) if this_run else None
+                    if action is not None and action.kind == "prompt":
+                        self.client.set_prompt(action.step.prompt)
+                        extra_s += self.attempt_s
+                    elif action is not None and action.kind == "done":
+                        finished = True
+                if finished:
+                    self.log("      the piece is on its square: ending the run")
+                    self.client.stop()
+                    status = self._wait_until_settled(self.grace_s)
+                    break
             waiting = reports_chunks and first_action is None
             limit = (started + self.first_answer_s) if waiting else (
-                (first_action or started) + self.attempt_s + self.grace_s + stalled_s)
+                (first_action or started) + self.attempt_s + self.grace_s + stalled_s + extra_s)
             if now >= limit:
                 self.log("      Dream-1 never answered: stopping the run" if waiting
                          else "      the station run went past its time limit: stopping it")
@@ -160,6 +193,8 @@ class StationMover:
                          "on DreamAPI, and the arms wait until it answers")
             self.sleep(self.poll_s)
         moved = first_action is not None or not reports_chunks
+        if supervisor is not None and supervisor.events:
+            self.last_note = f"the hand tracker: {supervisor.events[-1]}"
         return status, moved
 
     def execute(self, step: Step) -> None:
@@ -170,6 +205,7 @@ class StationMover:
         if dead:
             raise StationError(f"station reports a dead arm driver: {', '.join(dead)}")
 
+        self.last_note = ""
         after, moved = self._run(step)
         for _ in range(self.restarts):
             if moved or (after.get("state") == "error" and "ready" not in str(after.get("last_error") or "")):

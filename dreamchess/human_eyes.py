@@ -41,6 +41,7 @@ class HumanEyes:
         self.belief: Occupancy = occupancy(board)
         self.pending: Step | None = None
         self.ask, self.say, self.record = ask, say, record
+        self.note = ""  # what the hand tracker saw, offered with the question
 
     def attempted(self, step: Step) -> None:
         self.pending = step
@@ -67,7 +68,8 @@ class HumanEyes:
         name = f"{color_word(step.color)} {step.piece_name}"
         start = "the tray" if step.source == TRAY else step.source
         while True:
-            answer = self.ask(f"  Did the {name} from {start} end up on {_place(step)}? y/n: ").strip().lower()
+            note = f" ({self.note})" if self.note else ""
+            answer = self.ask(f"  Did the {name} from {start} end up on {_place(step)}?{note} y/n: ").strip().lower()
             if answer in ("y", "n"):
                 break
         result = {"type": "attempt_result", "prompt": step.prompt, "landed": answer == "y"}
@@ -114,6 +116,8 @@ class AttemptMover:
         started = self.clock()
         try:
             self.inner.execute(step)
+            if self.eyes is not None:
+                self.eyes.note = getattr(self.inner, "last_note", "")
         finally:
             self.record({"type": "attempt", "prompt": step.prompt, "arm": step.arm,
                          "source": step.source, "target": step.target,

@@ -64,6 +64,9 @@ def plain(line: str) -> str:
             parts.append("expected a piece on " + ", ".join(missing))
         if extra:
             parts.append("found an unexpected piece on " + ", ".join(extra))
+        verdict = rest.split("]: ", 1)[1] if "]: " in rest else ""
+        if verdict:
+            return f"That didn't work: {verdict}. Fixing it."
         return "That didn't work: " + " and ".join(parts) + ". Fixing it."
     if kind == "SEEN":
         return "You " + rest.split(" ", 1)[1] + "."
@@ -92,6 +95,10 @@ def play(args, ask=input, say=print, client=None, clock=time.monotonic, on_event
         args.fen = chess.STARTING_FEN  # the scripted games start from the normal starting position
         say(f"Replaying collection game {args.script}: you play White's moves from the script, and the robot plays "
             "the brown moves Dream-1 was trained on.")
+    from dreamchess import where
+
+    where.PROMPT_STYLE = getattr(args, "prompt_style", "both")  # how squares are named to Dream-1
+    where.ROBOT_SIDE = ROBOT
     board = chess.Board(args.fen)
     label = args.label or datetime.datetime.now().strftime("game-%Y%m%d-%H%M%S")
     log = GameLog(Path(args.log_dir) / f"{label}.jsonl", listener=on_event)
@@ -126,14 +133,42 @@ def play(args, ask=input, say=print, client=None, clock=time.monotonic, on_event
             raise SystemExit("Stopped: nobody confirmed the e-stop.")
         eyes = HumanEyes(board, ask, say, record=log)
         args.checkpoint = args.checkpoint or BASE_MODEL  # the station keeps its last model unless told
-        station = StationMover(client, attempt_s=args.seconds, checkpoint=args.checkpoint, log=say)
+        watch = getattr(args, "supervise", True)
+        hands = getattr(args, "hand_feed", None)
+        if hands is None and watch:
+            from dreamchess.hands import HandFeed
+
+            hands = HandFeed(getattr(args, "dream_python", "~/dream-env/bin/python"),
+                             getattr(args, "board_fit", "~/.dream-chess/board_fit.json"))
+        if watch and not hands.ready:
+            say("Not watching moves as they happen: " + (hands.problem or "the hand tracker stopped") + ".")
+
+        def supervise(step):
+            from dreamchess.supervisor import Supervisor
+
+            pieces = {chess.square_name(s): ("w" if p.color else "b", chess.piece_name(p.piece_type))
+                      for s, p in board.piece_map().items()}
+            return Supervisor(step, pieces, ROBOT, step.expected_after, log=say)
+
+        station = StationMover(client, attempt_s=args.seconds, checkpoint=args.checkpoint, log=say,
+                               hands=hands if watch else None, supervise=supervise)
         mover = AttemptMover(station, eyes, log, clock)
-        perception = eyes
+        # The checker agent: once the top camera is calibrated, a picture after every step decides, not a person.
+        board_camera = getattr(args, "board_camera", None)
+        if board_camera is not None:
+            from dreamchess.checker import CameraChecker
+
+            perception = CameraChecker(board_camera, eyes, log=lambda line: narrate(line))
+        else:
+            perception = eyes
         human = TerminalHuman(eyes, ask, say, record=log)
         opponent = TerminalOpponent(ask, say, on_move=eyes.opponent_moved, record=log,
                                     script=tuple(w for w, _ in script))
         stop_arms = client.stop
-        physical = lambda: dict(eyes.belief)
+        def physical():
+            seen = getattr(board_camera, "last_seen", None) if board_camera is not None else None
+            calibrated = board_camera is not None and board_camera.status()["calibrated"]
+            return dict(seen) if calibrated and seen is not None else dict(eyes.belief)
 
     # Start the engine only once every check has passed. Stockfish runs as a separate program, so
     # an engine started and then abandoned by a refusal would keep this program from exiting.
@@ -206,6 +241,12 @@ def main() -> None:
     parser.add_argument("--sim", action="store_true", help="rehearse with a simulated robot")
     parser.add_argument("--sim-success", type=float, default=0.4, help="how often the simulated robot succeeds")
     parser.add_argument("--seed", type=int, default=1)
+    parser.add_argument("--no-supervise", dest="supervise", action="store_false",
+                        help="don't watch moves as they happen (or re-prompt Dream-1 mid-run)")
+    parser.add_argument("--board-fit", default="~/.dream-chess/board_fit.json")
+    parser.add_argument("--prompt-style", choices=("squares", "both", "spatial"), default="both",
+                        help="name squares as in our demos (b8), describe where they are from the robot's seat, or both")
+    parser.add_argument("--dream-python", default="~/dream-env/bin/python")
     play(parser.parse_args())
 
 
