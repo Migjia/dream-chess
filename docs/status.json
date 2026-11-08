@@ -27,7 +27,7 @@
         {"item": "Survey the NUC", "owner": "A", "state": "done", "evidence": "Station, arms, cameras, and its local API found; see the PR notes"},
         {"item": "Install on the NUC and run tests", "owner": "A", "state": "done", "evidence": "113 passed in ~/dream-chess; Stockfish not installed there yet"},
         {"item": "Write the station adapter", "owner": "A", "state": "simulated", "evidence": "Talks to the station API; tested against a fake station only"},
-        {"item": "Write run_robot.py", "owner": "C", "state": "todo", "evidence": "Connects the real parts with a terminal opponent"},
+        {"item": "Write run_robot.py", "owner": "C", "state": "simulated", "evidence": "Full games work against the fake station and simulated robot; a person stands in for the camera"},
         {"item": "Write a safe home move", "owner": "A", "state": "todo", "evidence": "Lifts straight up and never carries off a piece"},
         {"item": "Calibrate the top camera", "owner": "B", "state": "todo", "evidence": "All 64 squares read correctly on the real board"}
       ]

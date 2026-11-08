@@ -60,7 +60,20 @@ python vision_tool.py calibrate --synthetic --yes
 python vision_tool.py check --synthetic
 python visualize.py                  # rebuild the simulation in docs/
 python dev_server.py                 # live dashboard at http://127.0.0.1:8765
+python run_robot.py --sim            # play a game against a simulated robot
 ```
+
+## Play the real robot
+
+On the NUC, with the station idle and **a person's hand on the e-stop**:
+
+```bash
+.venv/bin/python run_robot.py
+```
+
+The robot plays Brown, so you move first and type each move, such as `e4`. Until the station shares
+its top camera, you also stand in for the camera: after each robot step, it asks whether the piece
+landed. Every event is logged to `games/`. Ctrl-C stops the arms at once.
 
 The dashboard replays the simulation and re-runs the tests whenever code changes, and tracks
 what's left. Update its progress list in `docs/status.json` as work finishes.

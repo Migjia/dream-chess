@@ -1,0 +1,176 @@
+"""Play a full game of chess against the robot. Runs on the NUC, at the station.
+
+    python run_robot.py                          # moves the arms: a person must be at the e-stop
+    python run_robot.py --fen "<position>"       # start from a position, such as a short mate
+    python run_robot.py --sim                    # rehearse with a simulated robot; nothing moves
+
+The robot plays Brown (Black), so you move first. You also stand in for the top camera: after
+each robot step, you say whether the piece landed. Every event goes to games/<label>.jsonl.
+Ctrl-C stops the arms at once.
+"""
+from __future__ import annotations
+
+import argparse
+import datetime
+import json
+import re
+import time
+from pathlib import Path
+
+import chess
+
+from dreamchess.core import color_word, occupancy
+from dreamchess.engine import make_engine
+from dreamchess.human_eyes import AttemptMover, GameQuit, HumanEyes, TerminalHuman, TerminalOpponent
+from dreamchess.orchestrator import Config, GameAborted, Orchestrator
+
+GAMES = Path(__file__).parent / "games"
+ROBOT = chess.BLACK
+
+
+class GameLog:
+    def __init__(self, path: Path):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self.path = path
+
+    def __call__(self, event: dict) -> None:
+        event = {"time": datetime.datetime.now().isoformat(timespec="seconds"), **event}
+        with self.path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(event) + "\n")
+
+
+def plain(line: str) -> str:
+    """Turn the orchestrator's shorthand into words for the person playing."""
+    kind, _, rest = line.partition(" ")
+    rest = rest.strip()
+    found = re.match(r"(\w+) on (\w\d) \(best ([+-]\d+) cp", rest)
+    if kind == "WHAT" and found:
+        return f"I'll move my {found.group(1)} on {found.group(2)}."
+    found = re.match(r"(\S+) \(", rest)
+    if kind == "WHERE" and found:
+        return f"My move: {found.group(1)}."
+    found = re.match(r"\[(\d+)/(\d+)\] (.*)", rest)
+    if kind == "HOW" and found:
+        return f"Robot, attempt {found.group(1)} of {found.group(2)}: {found.group(3)}"
+    found = re.match(r"missing=\[(.*?)\] extra=\[(.*?)\]", rest)
+    if kind == "CHECK" and found:
+        missing = re.findall(r"[a-h][1-8]", found.group(1))
+        extra = re.findall(r"[a-h][1-8]", found.group(2))
+        parts = []
+        if missing:
+            parts.append("expected a piece on " + ", ".join(missing))
+        if extra:
+            parts.append("found an unexpected piece on " + ", ".join(extra))
+        return "That didn't work: " + " and ".join(parts) + ". Fixing it."
+    if kind == "SEEN":
+        return "You " + rest.split(" ", 1)[1] + "."
+    return line
+
+
+def describe_position(board: chess.Board) -> str:
+    groups: dict[str, list[str]] = {}
+    for square, piece in sorted(board.piece_map().items()):
+        color = color_word("w" if piece.color == chess.WHITE else "b")
+        groups.setdefault(f"{color} {chess.piece_name(piece.piece_type)}", []).append(chess.square_name(square))
+    return "\n".join(f"  {name}: {', '.join(squares)}" for name, squares in groups.items())
+
+
+def play(args, ask=input, say=print, client=None, clock=time.monotonic) -> dict:
+    board = chess.Board(args.fen)
+    label = args.label or datetime.datetime.now().strftime("game-%Y%m%d-%H%M%S")
+    log = GameLog(Path(args.log_dir) / f"{label}.jsonl")
+    engine = make_engine(args.stockfish)
+    say(f"Chess engine: {engine.name}")
+    if engine.name != "stockfish":
+        say("WARNING: Stockfish isn't installed, so the robot will play a much weaker built-in engine.")
+
+    if args.sim:
+        from dreamchess.mock import MockDream, MockHuman, MockPerception, SimWorld
+
+        world = SimWorld(board)
+        eyes = None
+        mover = AttemptMover(MockDream(world, seed=args.seed, p_success=args.sim_success), None, log, clock)
+        perception = MockPerception(world, noise=0)
+        human = MockHuman(world)
+        opponent = TerminalOpponent(ask, say, on_move=lambda after: setattr(world, "occ", occupancy(after)), record=log)
+        stop_arms = lambda: None
+    else:
+        from dreamchess.station_mover import StationClient, StationMover
+
+        client = client or StationClient(args.station)
+        status = client.status()
+        if status.get("state") != "idle":
+            raise SystemExit(f"The station is {status.get('state')}, not idle. Wait for it, then try again.")
+        say("\nThe robot plays brown. Set up the board like this, with brown nearest the robot:")
+        say(describe_position(board))
+        ask("Press Enter when the board is set up: ")
+        if ask("This moves the arms. Type yes when a person has a hand on the e-stop: ").strip().lower() != "yes":
+            raise SystemExit("Stopped: nobody confirmed the e-stop.")
+        eyes = HumanEyes(board, ask, say, record=log)
+        station = StationMover(client, attempt_s=args.seconds, checkpoint=args.checkpoint, log=say)
+        mover = AttemptMover(station, eyes, log, clock)
+        perception = eyes
+        human = TerminalHuman(eyes, ask, say, record=log)
+        opponent = TerminalOpponent(ask, say, on_move=eyes.opponent_moved, record=log)
+        stop_arms = client.stop
+
+    def narrate(line: str) -> None:
+        say(plain(line))
+        log({"type": "agent", "text": line})
+
+    # The person answers once per check, so there's nothing to vote across.
+    config = Config(frames_per_observation=1 if eyes is not None else 3)
+    agent = Orchestrator(board, ROBOT, engine, mover, perception, human, opponent, config=config, log=narrate)
+    log({"type": "game_start", "fen": board.fen(), "robot": "brown", "engine": engine.name,
+         "sim": bool(args.sim), "checkpoint": args.checkpoint, "seconds_per_attempt": args.seconds})
+
+    started = clock()
+    ending = "finished"
+    try:
+        agent.run(args.max_plies)
+    except GameQuit:
+        ending = "quit"
+    except KeyboardInterrupt:
+        stop_arms()
+        say("\nStopped the arms.")
+        ending = "stopped with Ctrl-C"
+    except GameAborted as err:
+        ending = f"aborted: {err}"
+    finally:
+        engine.close()
+
+    minutes = (clock() - started) / 60
+    stats = agent.stats
+    summary = {
+        "type": "game_end", "ending": ending, "result": board.result(claim_draw=True),
+        "moves": [m.uci() for m in board.move_stack], "robot_moves": stats.moves,
+        "dream_attempts": stats.dream_attempts, "corrections": stats.corrections,
+        "human_rescues": stats.human_calls, "minutes": round(minutes, 1),
+        "robot_moves_per_hour": round(stats.moves / (minutes / 60), 1) if minutes > 0 and stats.moves else 0,
+    }
+    log(summary)
+    say(f"\nGame {ending}. Result: {summary['result']}")
+    say(f"Robot moves: {stats.moves}, Dream-1 attempts: {stats.dream_attempts}, "
+        f"automatic fixes: {stats.corrections}, human rescues: {stats.human_calls}, minutes: {summary['minutes']}")
+    say(f"Saved to {log.path}")
+    return summary
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--fen", default=chess.STARTING_FEN, help="starting position; default is a normal game")
+    parser.add_argument("--label", help="a name for the game log; default is the date and time")
+    parser.add_argument("--seconds", type=float, default=30.0, help="time limit per Dream-1 attempt")
+    parser.add_argument("--checkpoint", help="the model to run, such as a fine-tuned ID; default keeps the station's")
+    parser.add_argument("--stockfish", help="path to Stockfish (or set STOCKFISH_PATH)")
+    parser.add_argument("--max-plies", type=int, default=None, help="stop after this many half-moves")
+    parser.add_argument("--station", default="http://127.0.0.1:8091")
+    parser.add_argument("--log-dir", default=str(GAMES))
+    parser.add_argument("--sim", action="store_true", help="rehearse with a simulated robot")
+    parser.add_argument("--sim-success", type=float, default=0.4, help="how often the simulated robot succeeds")
+    parser.add_argument("--seed", type=int, default=1)
+    play(parser.parse_args())
+
+
+if __name__ == "__main__":
+    main()
