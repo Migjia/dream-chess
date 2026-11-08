@@ -556,6 +556,8 @@ def add_game_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--checkpoint", help="the model to run, such as a fine-tuned ID; default: the base model")
     parser.add_argument("--no-supervise", dest="supervise", action="store_false",
                         help="don't watch moves as they happen (or re-prompt Dream-1 mid-run)")
+    parser.add_argument("--prompt-style", choices=("squares", "both", "spatial"), default="both",
+                        help="name squares as in our demos (b8), describe where they are from the robot's seat, or both")
     parser.add_argument("--board-fit", default="~/.dream-chess/board_fit.json",
                         help="where tools/fit_board.py saved the board's squares in each arm's frame")
     parser.add_argument("--dream-python", default="~/dream-env/bin/python",

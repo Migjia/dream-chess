@@ -95,6 +95,10 @@ def play(args, ask=input, say=print, client=None, clock=time.monotonic, on_event
         args.fen = chess.STARTING_FEN  # the scripted games start from the normal starting position
         say(f"Replaying collection game {args.script}: you play White's moves from the script, and the robot plays "
             "the brown moves Dream-1 was trained on.")
+    from dreamchess import where
+
+    where.PROMPT_STYLE = getattr(args, "prompt_style", "both")  # how squares are named to Dream-1
+    where.ROBOT_SIDE = ROBOT
     board = chess.Board(args.fen)
     label = args.label or datetime.datetime.now().strftime("game-%Y%m%d-%H%M%S")
     log = GameLog(Path(args.log_dir) / f"{label}.jsonl", listener=on_event)
@@ -240,6 +244,8 @@ def main() -> None:
     parser.add_argument("--no-supervise", dest="supervise", action="store_false",
                         help="don't watch moves as they happen (or re-prompt Dream-1 mid-run)")
     parser.add_argument("--board-fit", default="~/.dream-chess/board_fit.json")
+    parser.add_argument("--prompt-style", choices=("squares", "both", "spatial"), default="both",
+                        help="name squares as in our demos (b8), describe where they are from the robot's seat, or both")
     parser.add_argument("--dream-python", default="~/dream-env/bin/python")
     play(parser.parse_args())
 
