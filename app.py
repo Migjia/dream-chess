@@ -84,6 +84,7 @@ class Session:
         self.warm_file = Path(tempfile.gettempdir()) / f"dream-chess-warm-{os.getpid()}.json"
         self.warm_process: subprocess.Popen | None = None
         self.warm_checkpoint: str | None = None
+        self.hand_feed = None  # the hand tracker, which watches each move as it happens (dreamchess/hands.py)
         # What the agent last asked Dream-1 to do, from the game's own events (both modes).
         self.dream: dict = {"state": "idle", "prompt": None, "arm": None, "attempt": None, "calls": 0,
                             "last_seconds": None, "landed": None}
@@ -198,6 +199,27 @@ class Session:
             [str(python), "-W", "ignore", str(script), checkpoint, str(self.warm_file), "--parent", str(os.getpid())],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
+    def _start_hand_feed(self) -> None:
+        if self.args.sim or not getattr(self.args, "supervise", True) or self.hand_feed is not None:
+            return
+        from dreamchess.hands import HandFeed
+
+        self.hand_feed = HandFeed(getattr(self.args, "dream_python", "~/dream-env/bin/python"),
+                                  getattr(self.args, "board_fit", "~/.dream-chess/board_fit.json"))
+        self.args.hand_feed = self.hand_feed
+
+    def hand(self) -> dict | None:
+        """Where the hand doing the current step is, from the tracker: square, height and grip."""
+        if self.hand_feed is None:
+            return None
+        if not self.hand_feed.ready:
+            return {"watching": False, "problem": self.hand_feed.problem or "the hand tracker stopped"}
+        sample = self.hand_feed.latest()
+        arm = self.dream.get("arm") or "right"
+        if not sample or arm not in sample:
+            return {"watching": True}
+        return {"watching": True, "arm": arm, **sample[arm]}
+
     def stop_warm_up(self) -> None:
         if self.warm_process is not None and self.warm_process.poll() is None:
             self.warm_process.terminate()
@@ -224,6 +246,7 @@ class Session:
             self.game_number += 1
             self.dream.update(state="idle", prompt=None, arm=None, attempt=None, calls=0, last_seconds=None,
                               landed=None)
+        self._start_hand_feed()
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.thread.start()
         self.warm_up()
@@ -275,6 +298,8 @@ class Session:
         if not self.args.sim:
             self.stop_robot()
         self.stop_warm_up()
+        if self.hand_feed is not None:
+            self.hand_feed.close()
         with self.lock:
             self.quitting = True
             self.lock.notify_all()
@@ -323,6 +348,7 @@ class Session:
         if not self.args.sim:
             out["station"] = station_telemetry(self.args.station)
             out["warm"] = self.warm_status()
+            out["hand"] = self.hand()
         return out
 
     def state(self, since: int) -> dict:
@@ -428,6 +454,10 @@ def add_game_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--pace", type=float, default=1.0, help="with --sim, seconds between steps, to watch it")
     parser.add_argument("--fen", default=chess.STARTING_FEN)
     parser.add_argument("--checkpoint", help="the model to run, such as a fine-tuned ID; default: the base model")
+    parser.add_argument("--no-supervise", dest="supervise", action="store_false",
+                        help="don't watch moves as they happen (or re-prompt Dream-1 mid-run)")
+    parser.add_argument("--board-fit", default="~/.dream-chess/board_fit.json",
+                        help="where tools/fit_board.py saved the board's squares in each arm's frame")
     parser.add_argument("--dream-python", default="~/dream-env/bin/python",
                         help="the Dream library's Python, which starts the model on DreamAPI before the first move")
     parser.add_argument("--seconds", type=float, default=60.0,

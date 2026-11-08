@@ -126,7 +126,25 @@ def play(args, ask=input, say=print, client=None, clock=time.monotonic, on_event
             raise SystemExit("Stopped: nobody confirmed the e-stop.")
         eyes = HumanEyes(board, ask, say, record=log)
         args.checkpoint = args.checkpoint or BASE_MODEL  # the station keeps its last model unless told
-        station = StationMover(client, attempt_s=args.seconds, checkpoint=args.checkpoint, log=say)
+        watch = getattr(args, "supervise", True)
+        hands = getattr(args, "hand_feed", None)
+        if hands is None and watch:
+            from dreamchess.hands import HandFeed
+
+            hands = HandFeed(getattr(args, "dream_python", "~/dream-env/bin/python"),
+                             getattr(args, "board_fit", "~/.dream-chess/board_fit.json"))
+        if watch and not hands.ready:
+            say("Not watching moves as they happen: " + (hands.problem or "the hand tracker stopped") + ".")
+
+        def supervise(step):
+            from dreamchess.supervisor import Supervisor
+
+            pieces = {chess.square_name(s): ("w" if p.color else "b", chess.piece_name(p.piece_type))
+                      for s, p in board.piece_map().items()}
+            return Supervisor(step, pieces, ROBOT, step.expected_after, log=say)
+
+        station = StationMover(client, attempt_s=args.seconds, checkpoint=args.checkpoint, log=say,
+                               hands=hands if watch else None, supervise=supervise)
         mover = AttemptMover(station, eyes, log, clock)
         perception = eyes
         human = TerminalHuman(eyes, ask, say, record=log)
@@ -206,6 +224,10 @@ def main() -> None:
     parser.add_argument("--sim", action="store_true", help="rehearse with a simulated robot")
     parser.add_argument("--sim-success", type=float, default=0.4, help="how often the simulated robot succeeds")
     parser.add_argument("--seed", type=int, default=1)
+    parser.add_argument("--no-supervise", dest="supervise", action="store_false",
+                        help="don't watch moves as they happen (or re-prompt Dream-1 mid-run)")
+    parser.add_argument("--board-fit", default="~/.dream-chess/board_fit.json")
+    parser.add_argument("--dream-python", default="~/dream-env/bin/python")
     play(parser.parse_args())
 
 

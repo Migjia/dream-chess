@@ -133,7 +133,8 @@ def station():
             length = int(self.headers.get("Content-Length") or 0)
             body = json.loads(self.rfile.read(length) or b"{}")
             fake.requests.append(("POST", self.path, body))
-            routes = {"/start": lambda: fake.start(body), "/stop": fake.stop, "/home": fake.home}
+            routes = {"/start": lambda: fake.start(body), "/stop": fake.stop, "/home": fake.home,
+                      "/prompt": lambda: (200, fake.status())}
             self._reply(*routes[self.path]()) if self.path in routes else self._reply(404, {"error": "no route"})
 
         def log_message(self, *args):
@@ -307,3 +308,44 @@ def test_the_last_runs_actions_dont_count_as_this_ones(station):
     m.execute(STEP)
     assert posts(station, "/stop") == []
     assert len(posts(station, "/start")) == 2  # the warm-up was waited out, then the step ran again
+
+
+# --- Watching the move as it happens ---
+
+class FakeHands:
+    """The hand tracker, replaying a scripted path: (seconds after the run starts, sample)."""
+
+    def __init__(self, path):
+        self.path, self.start, self.ready = path, None, True
+
+    def mark(self):
+        self.start = time.time()
+        return 0
+
+    def since(self, mark):
+        due = [{"run_start": True}] + [s for at, s in self.path if time.time() - self.start >= at]
+        return due[mark:], len(due)
+
+
+def test_a_wrong_drop_is_corrected_mid_run_and_the_run_ends_once_the_piece_lands(station):
+    import chess
+
+    from dreamchess.supervisor import Supervisor
+    from dreamchess.where import plan_move
+
+    board = chess.Board("1r4k1/8/8/8/8/8/r7/6K1 b - - 1 1")
+    step = plan_move(board, chess.Move.from_uci("b8b1"))[0]
+    hand = lambda sq, z, g: {"right": {"square": sq, "z": z, "grip": g}}  # noqa: E731
+    path = [(0.10, hand("b8", 0.05, 0.1)), (0.20, hand("b3", 0.06, 0.1)), (0.25, hand("b3", 0.07, 0.9)),
+            (0.35, hand("b3", 0.05, 0.1)), (0.45, hand("b1", 0.06, 0.1)), (0.50, hand("b1", 0.06, 0.9))]
+    station.run_s = 5.0  # the run would go on for seconds; the supervisor ends it once the rook is on b1
+    m = mover(station, attempt_s=3.0, hands=FakeHands(path),
+              supervise=lambda s: Supervisor(s, {"b8": ("b", "rook"), "a2": ("b", "rook"), "g8": ("b", "king"),
+                                                 "g1": ("w", "king")}, chess.BLACK, s.expected_after))
+    started = time.time()
+    m.execute(step)
+    assert time.time() - started < 3.0
+    prompts = posts(station, "/prompt")
+    assert len(prompts) == 1 and "brown rook on square b3" in prompts[0]["prompt"]
+    assert len(posts(station, "/stop")) == 1
+    assert m.last_note == "the hand tracker: let go on b1, the target"

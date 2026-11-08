@@ -345,6 +345,7 @@ button, input { font: inherit; color: inherit; }
           <div data-live><span>Round trip</span><b id="b-rtt">–</b></div>
           <div data-live><span>Inference</span><b id="b-infer">–</b></div>
           <div data-live><span>Action chunks</span><b id="b-chunks">–</b></div>
+          <div data-live style="grid-column: 1 / -1"><span>The hand, watched live</span><b id="b-hand">–</b></div>
         </div>
         <p class="explain" id="brainexplain">Dream-1 is a vision-language-action model. It knows nothing about chess:
           each step, it gets the three camera views and one plain sentence, and streams motion to both arms
@@ -432,6 +433,11 @@ function handle(e) {
   const failureNext = e.type === "agent" && /^(CHECK|HELP)/.test(e.text);
   if (awaitingCheck && !failureNext && !["attempt", "say", "attempt_result", "help"].includes(e.type)) checkPassed();
   if (e.type === "say") log(e.text);
+  // The supervisor's calls during a move go under How: what it saw, and what it asked Dream-1 next.
+  if (e.type === "say" && /SUPERVISE|ending the run/.test(e.text)) {
+    const line = e.text.replace(/^\s*SUPERVISE\s*/, "");
+    stage.how.detail.insertAdjacentHTML("beforeend", `<div class="prompt" style="color:var(--brand)">\u21b3 ${esc(line)}</div>`);
+  }
   if (e.type === "agent") log(e.text);
   if (e.type === "error") { log(e.text, "err"); $("banner").textContent = e.text; $("banner").className = "banner"; $("banner").hidden = false; }
   if (e.type === "game_start") $("engine").textContent = e.engine;
@@ -674,6 +680,10 @@ async function readBrain() {
     $("b-rtt").textContent = s.p50_ms != null ? `${Math.round(s.p50_ms)} ms` : (s.last_rtt_ms != null ? `${Math.round(s.last_rtt_ms)} ms` : "–");
     $("b-infer").textContent = s.serve_infer_ms != null ? `${Math.round(s.serve_infer_ms)} ms` : "–";
     $("b-chunks").textContent = s.chunks != null ? s.chunks : "–";
+    const h = b.hand;
+    $("b-hand").textContent = !h ? "–" : !h.watching ? `Not watching: ${h.problem}` : !h.arm ? "Watching, waiting for a move"
+      : `${h.arm[0].toUpperCase() + h.arm.slice(1)} hand ${h.z < 0.10 ? "low, at" : "over"} ${h.square || "the edge of the board"} · ` +
+        (h.grip < 0.22 ? "gripping" : h.grip > 0.9 ? "open" : "closing");
   } catch (err) { /* try again on the next tick */ }
   setTimeout(readBrain, 1000);
 }

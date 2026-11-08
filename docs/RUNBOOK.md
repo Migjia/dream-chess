@@ -74,6 +74,16 @@ that slides a rook the length of the board, can be far from anything in the trai
 .venv/bin/python app.py --script 1 --checkpoint "dream-1-ft:..."   # game 1: 20 robot moves, starting 1.e4 Nf6
 ```
 
+**The supervisor watches every move as it happens** (on by default; `--no-supervise` turns it off). It follows the
+hand from the arms' joint angles, through the board calibration in `~/.dream-chess/board_fit.json`, and re-prompts
+Dream-1 mid-run when it grips an empty square or the wrong piece, or lets go on the wrong square. Once the piece lands
+on its target, it ends the run. The page shows the hand's square and grip live in the brain card. If the board moves,
+fit it again on demos recorded in the new spot:
+
+```bash
+~/dream-env/bin/python tools/fit_board.py ~/hackathon_data/<dataset> ~/.dream-chess/board_fit.json
+```
+
 To set up from the robot's side, switch the page's board to **From the robot's side**, so each piece lands on the
 right file. A rook on b2 instead of a2 puts two rooks on the b-file, and the model may reach for the wrong one.
 
