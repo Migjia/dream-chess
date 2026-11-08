@@ -191,6 +191,16 @@ button, input { font: inherit; color: inherit; }
 .bar-track i { display: block; height: 100%; width: 35%; border-radius: 4px; background: var(--brand); animation: slide 1.6s ease-in-out infinite; }
 .warm.ready .bar-track, .warm.error .bar-track { display: none; }
 @keyframes slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(290%); } }
+.calib { margin: 16px 0; padding: 16px; border-radius: 12px; background: var(--accent-soft); }
+.calib .t { font-weight: 600; margin-bottom: 8px; }
+.calib ol { margin: 0; padding-left: 20px; display: grid; gap: 12px; font-size: 13px; color: var(--ink-2); }
+.calib li.done { color: var(--green); }
+.calib .row { justify-content: flex-start; margin-top: 8px; }
+.calib select { height: 36px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--ink); padding: 0 8px; }
+.calib .msg { margin-top: 12px; font-size: 13px; font-weight: 600; }
+.calib .msg.bad { color: var(--red); } .calib .msg.ok { color: var(--green); }
+.askerr { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: var(--red-soft); color: var(--red); font-size: 14px; }
+.askerr b { display: block; }
 .asknote { margin-top: 8px; font-size: 13px; color: var(--brand); font-weight: 600; }
 .explain { font-size: 13px; color: var(--ink-2); margin: 16px 0 0; }
 .explain code { font: 12px var(--mono); background: var(--bg); padding: 1px 6px; border-radius: 5px; }
@@ -285,6 +295,19 @@ button, input { font: inherit; color: inherit; }
       <p class="sub" id="eyes-sub">The top camera, seen from the robot's side of the board.</p>
       <div class="cam"><img id="cam" alt="The robot's camera view of the board" hidden>
         <div class="empty" id="camempty">Starting the camera...</div><span class="tag" id="camtag"></span></div>
+      <div class="calib" id="calib" hidden>
+        <div class="t">Calibrate the webcam: once, about a minute</div>
+        <ol>
+          <li id="cal1">Take every piece off the board. In the picture above, which corner is a1 (White's left)?
+            <div class="row"><select id="a1" aria-label="Where a1 is in the picture">
+              <option value="bottom-left">Bottom left</option><option value="bottom-right">Bottom right</option>
+              <option value="top-right">Top right</option><option value="top-left">Top left</option></select>
+              <button class="btn primary" id="cal-empty" type="button">Capture the empty board</button></div></li>
+          <li id="cal2">Set up the standard starting position, White on the a1 side.
+            <div class="row"><button class="btn primary" id="cal-start" type="button" disabled>Capture the starting position</button></div></li>
+        </ol>
+        <div class="msg" id="cal-msg" role="status"></div>
+      </div>
       <div class="flow" id="flow">
         <div><b>1. Capture</b>A frame from the camera above the board.</div>
         <div><b>2. Locate</b>Find the 64 squares from calibration.</div>
@@ -313,6 +336,7 @@ button, input { font: inherit; color: inherit; }
         <div class="q" id="askq">Starting...</div>
         <div class="hint" id="askhint"></div>
         <div class="asknote" id="asknote" hidden></div>
+        <div class="askerr" id="askerr" role="alert" hidden></div>
         <div class="row" id="askrow"></div>
       </div>
     </section>
@@ -555,25 +579,39 @@ function segment(options, current, onPick) {
     b.setAttribute("aria-pressed", String(value === current)); b.onclick = () => onPick(value); seg.append(b);
   }
 }
-function setupEyes(live) {
-  liveMode = live;
-  if (live) {
-    segment([["top", "Top"], ["left", "Left wrist"], ["right", "Right wrist"]], camRole, v => { camRole = v; setupEyes(true); loadCamera(true); });
+let eyesMode = "sim";  // "sim": the simulated camera; "station": the frames Dream-1 gets; "webcam": our own camera
+function setupEyes(mode) {
+  eyesMode = mode; liveMode = mode === "station" || (mode === "webcam" && camView === "station");
+  if (mode === "station") {
+    segment([["top", "Top"], ["left", "Left wrist"], ["right", "Right wrist"]], camRole, v => { camRole = v; setupEyes(mode); loadCamera(true); });
     $("eyes-sub").textContent = "The frames the station hands Dream-1, refreshed during every move.";
     $("detected-h").textContent = "The board, as confirmed";
+  } else if (mode === "webcam") {
+    segment([["grid", "What it detects"], ["raw", "Webcam"], ["station", "Dream-1's view"]], camView,
+      v => { camView = v; camRole = "top"; setupEyes(mode); loadCamera(true); });
+    $("eyes-sub").textContent = camView === "station" ? "The top camera's last frame, as the station handed it to Dream-1."
+      : "The webcam over the board. Press \u201cI've made my move\u201d and it reads what changed.";
+    $("detected-h").textContent = "What the webcam detects";
   } else {
-    segment([["grid", "What it detects"], ["raw", "Camera"]], camView, v => { camView = v; setupEyes(false); loadCamera(true); });
+    segment([["grid", "What it detects"], ["raw", "Camera"]], camView, v => { camView = v; setupEyes(mode); loadCamera(true); });
     $("eyes-sub").textContent = "A simulated top camera, from the robot's side. The real vision code reads every frame.";
   }
 }
 function showFrame(url, tag) {
   const pre = new Image();
-  pre.onload = () => { $("cam").src = url; $("cam").classList.toggle("zoom", !liveMode); $("cam").hidden = false; $("camempty").hidden = true; $("camtag").innerHTML = tag; };
+  pre.onload = () => { $("cam").src = url; $("cam").classList.toggle("zoom", eyesMode === "sim"); $("cam").hidden = false; $("camempty").hidden = true; $("camtag").innerHTML = tag; };
   pre.onerror = () => { $("cam").hidden = true; $("camempty").hidden = false;
-    $("camempty").textContent = liveMode ? "No frames yet. Dream-1's camera frames appear here while the arms move." : "The camera is starting..."; };
+    $("camempty").textContent = eyesMode === "webcam" && !liveMode ? "Can't get a picture from the webcam. Is it plugged in?"
+      : liveMode ? "No frames yet. Dream-1's camera frames appear here while the arms move." : "The camera is starting..."; };
   pre.src = url;
 }
 function loadCamera(force) {
+  if (eyesMode === "webcam" && !liveMode) {
+    const grid = camView === "grid" && lastState.webcam && lastState.webcam.calibrated;
+    showFrame(`/camera/webcam.jpg?${grid ? "grid=1&" : ""}t=${Date.now()}`,
+      `<span class="live-dot"></span>${grid ? "Webcam · detected squares and pieces" : "Webcam · live"}`);
+    return;
+  }
   if (liveMode) {
     const age = frameAges[camRole], fresh = age != null && age < 90;
     showFrame(`/camera/${camRole}.jpg?t=${Date.now()}`, (fresh ? `<span class="live-dot"></span>` : "") +
@@ -593,6 +631,13 @@ async function readVision() {
   try {
     const v = await (await fetch("/vision", { cache: "no-store" })).json();
     const a = $("agree");
+    if (v.source === "webcam") showCalibration(v.calibration);
+    if (v.source === "webcam" && !v.ready) {
+      drawDetected(lastState, {});
+      a.className = "status wait"; a.textContent = "Not calibrated";
+      $("agree-why").textContent = "Calibrate the webcam above, and it reads your moves from the board.";
+      return;
+    }
     if (v.source === "person") {
       frameAges = v.frames || {};
       drawDetected(lastState, v.detected || {});
@@ -602,6 +647,7 @@ async function readVision() {
       return;
     }
     if (v.error) { a.className = "status bad"; a.textContent = "Camera error"; $("agree-why").textContent = v.error; return; }
+    if (v.source === "webcam" && !v.error) $("vision-note").hidden = false;
     if (!v.ready) { a.className = "status wait"; a.textContent = "Calibrating"; $("agree-why").textContent = "Learning the empty board and the starting position."; setTimeout(() => loadCamera(true), 1500); return; }
     drawDetected(lastState, v.detected || {});
     const pieces = lastState.fen ? parseFen(lastState.fen) : {};
@@ -610,6 +656,30 @@ async function readVision() {
     else { a.className = "status bad"; a.textContent = `${off.length} square${off.length > 1 ? "s" : ""} differ`; $("agree-why").textContent = `Off on ${off.slice(0, 6).join(", ")}. The check step catches this and asks Dream-1 to fix it.`; }
   } catch (err) { /* the next board change tries again */ }
 }
+
+function showCalibration(c) {
+  if (!c) return;
+  const card = $("calib");
+  card.hidden = c.calibrated && !calibrating;
+  $("flow").hidden = !card.hidden;
+  $("cal1").classList.toggle("done", c.step !== "empty");
+  $("cal2").classList.toggle("done", c.calibrated);
+  $("cal-start").disabled = c.step === "empty";
+  if (c.error && !$("cal-msg").textContent) { $("cal-msg").textContent = c.error; $("cal-msg").className = "msg bad"; }
+}
+let calibrating = false;
+async function calibrateStep(step, button) {
+  calibrating = true; button.disabled = true; const label = button.textContent; button.textContent = "Capturing...";
+  const r = await post(`/webcam/${step}`, { a1: $("a1").value });
+  button.textContent = label; button.disabled = false;
+  const msg = $("cal-msg");
+  if (!r.ok) { msg.textContent = r.error || "That didn't work."; msg.className = "msg bad"; }
+  else if (step === "empty") { msg.textContent = "Found the board. Now set up the starting position."; msg.className = "msg ok"; }
+  else { msg.textContent = "Calibrated. Set up the game's position, and the webcam will read your moves."; msg.className = "msg ok"; calibrating = false; }
+  showCalibration(r); loadCamera(true); readVision();
+}
+$("cal-empty").onclick = () => calibrateStep("empty", $("cal-empty"));
+$("cal-start").onclick = () => calibrateStep("start", $("cal-start"));
 
 // --- the robot's brain --------------------------------------------------------------------------------------
 // "dream-1-ft:0b7a43f9-xiangwen-chess" reads as "xiangwen-chess · fine-tune"; the full ID stays in the tooltip.
@@ -678,7 +748,17 @@ async function post(path, body) {
   const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Dream-Chess": "1" }, body: JSON.stringify(body || {}) });
   return r.json().catch(() => ({}));
 }
+async function cameraMove(b) {
+  if (askId === null) return;
+  b.disabled = true; b.textContent = "Reading the board...";
+  const r = await post("/webcam/move", { id: askId });
+  const err = $("askerr");
+  if (r.ok) { err.hidden = true; askId = null; $("askrow").innerHTML = ""; $("askq").textContent = `The camera read your move: ${r.san}.`; $("askhint").textContent = ""; $("ask").classList.remove("on"); return; }
+  b.disabled = false; b.textContent = "I've made my move";
+  err.innerHTML = `<b>${esc(r.problem || "Couldn't read the move.")}</b>${esc(r.fix || "")}`; err.hidden = false;
+}
 async function answer(text) {
+  $("askerr").hidden = true;
   if (askId === null) return;
   const id = askId; askId = null; picked = null;
   $("askrow").innerHTML = ""; $("askq").textContent = "Sent."; $("askhint").textContent = ""; $("ask").classList.remove("on");
@@ -712,11 +792,19 @@ function showQuestion(p, st) {
     return;
   }
   if (p.id === askId) return;
-  askId = p.id; askKind = p.kind; picked = null;
+  askId = p.id; askKind = p.kind; picked = null; $("askerr").hidden = true;
   const [question, hint] = friendly(p);
   $("ask").classList.add("on"); $("askq").textContent = question; $("askhint").textContent = hint;
   const row = $("askrow"); row.innerHTML = "";
-  if (p.kind === "move") { row.append(...input("e4, Nf3 or e2e4", "Play move")); row.append(button("End the game", "quit")); }
+  if (p.kind === "move") {
+    if (lastState.webcam && lastState.webcam.calibrated) {
+      const b = document.createElement("button"); b.type = "button"; b.className = "btn primary"; b.textContent = "I've made my move";
+      b.onclick = () => cameraMove(b); row.append(b);
+      $("askhint").textContent = "Make your move on the real board, then press the button. The webcam reads it. Or type it below.";
+      const [i, send] = input("or type it: e4, Nf3", "Play"); send.className = "btn"; row.append(i, send);
+    } else row.append(...input("e4, Nf3 or e2e4", "Play move"));
+    row.append(button("End the game", "quit"));
+  }
   else if (p.kind === "yesno") { row.append(button("Yes, it landed", "y", "primary"), button("No, it didn't", "n")); }
   else if (p.kind === "confirm") { row.append(button("My hand is on the e-stop: go", "yes", "danger"), button("Not yet", "no")); }
   else if (p.kind === "continue" && /set up/i.test(p.prompt)) { row.append(button("The board is set up", "", "primary")); }
@@ -761,14 +849,16 @@ async function tick() {
     bootId = st.boot; lastState = st; since = st.next; running = st.running;
     for (const e of st.events) handle(e);
     const sim = st.mode === "simulation";
-    if (eyesSetUp !== sim) { eyesSetUp = sim; setupEyes(!sim); }
+    const mode = sim ? "sim" : st.webcam ? "webcam" : "station";
+    if (eyesSetUp !== mode) { eyesSetUp = mode; setupEyes(mode); loadCamera(true); readVision(); }
     $("mode").textContent = sim ? "Simulation" : "Live robot"; $("mode").className = "chip " + (sim ? "sim" : "live");
     $("stoparms").hidden = sim; $("newgame").hidden = st.running;
     $("s-moves").textContent = moves; $("s-attempts").textContent = attempts; $("s-fixes").textContent = fixes; $("s-help").textContent = rescues;
     if (st.pending && st.pending.kind === "move") setStage("opponent", "active", "Waiting for your move.");
     showQuestion(st.pending, st);
     drawBoard(st); lightLoop();
-    if (!sim) { if (liveTick++ % 4 === 0) { readVision().then(() => loadCamera(true)); } }
+    if (mode === "webcam") { if (liveTick++ % 4 === 0) { readVision(); loadCamera(true); } }
+    else if (!sim) { if (liveTick++ % 4 === 0) { readVision().then(() => loadCamera(true)); } }
     else loadCamera(false);
   } catch (err) {
     $("banner").textContent = "Lost the connection to the app. Is app.py still running?"; $("banner").className = "banner"; $("banner").hidden = false;

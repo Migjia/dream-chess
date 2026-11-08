@@ -326,3 +326,51 @@ def test_without_the_dream_library_the_warm_up_says_so(tmp_path, station):  # no
     session.warm_up()
     assert session.warm_process is None
     assert session.brain()["warm"]["state"] == "off"
+
+
+# --- The webcam reads the person's move ---
+
+def webcam_session(tmp_path):
+    from test_webcam import Table
+
+    from dreamchess.webcam import BoardCamera
+
+    table = Table()
+    session = app.Session(args(tmp_path))
+    session.webcam = BoardCamera(lambda: table, tmp_path / "webcam.npz")
+    table.camera.pieces = {}
+    assert session.webcam_action("empty", {"a1": "bottom-left"})["ok"]
+    table.place(chess.Board())
+    assert session.webcam_action("start", {})["calibrated"]
+    return session, table
+
+
+def test_the_webcam_reads_the_persons_move_and_the_game_goes_on(tmp_path):
+    session, table = webcam_session(tmp_path)
+    session.start()
+    state = wait_for(session, lambda s: s["pending"] and s["pending"]["kind"] == "move")
+    played = chess.Board(BROWN_MATES)
+    played.push_uci("h1g1")
+    table.place(played)
+    result = session.camera_move(state["pending"]["id"])
+    assert result["ok"] and result["san"] == "Kg1"
+    state = wait_for(session, lambda s: not s["running"])
+    assert state["summary"]["result"] == "0-1"
+    assert any(e.get("text") == "The camera read your move: Kg1." for e in state["events"])
+
+
+def test_the_webcam_says_how_to_undo_an_illegal_move(tmp_path):
+    session, table = webcam_session(tmp_path)
+    session.start()
+    state = wait_for(session, lambda s: s["pending"] and s["pending"]["kind"] == "move")
+    wrong = chess.Board(BROWN_MATES)
+    wrong.remove_piece_at(chess.H1)
+    wrong.set_piece_at(chess.H2, chess.Piece(chess.KING, chess.WHITE))  # into the rook's line: illegal
+    table.place(wrong)
+    result = session.camera_move(state["pending"]["id"])
+    assert not result["ok"]
+    assert result["problem"] == "Your king moved from h1 to h2, which isn't a legal move."
+    assert result["fix"] == "Please move your king back from h2 to h1, then make a legal move."
+    assert session.state(0)["pending"]["id"] == state["pending"]["id"]  # still waiting for a real move
+    session.answer(state["pending"]["id"], "quit")
+    wait_for(session, lambda s: not s["running"])
