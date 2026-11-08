@@ -65,7 +65,40 @@ the piece landed. **Stop the arms** on the page, or Ctrl+C on the NUC, stops the
 with `--frames`), and "The robot's brain" shows the station's status. If the brain says *Station offline*, the
 station isn't running. The board itself still comes from your answers until the station shares its camera.
 
-For a short first test, start from a mate in two with `--fen "<position>"`.
+**To test what the model learned, replay a collection game** (`--script 1`, `2` or `3`). You play White's moves
+from the script, which the page suggests and fills in. The robot plays that game's brown moves, so every prompt is
+one Dream-1 was fine-tuned on, with the pieces where they were in its demos. Stockfish's own picks, like a mate in one
+that slides a rook the length of the board, can be far from anything in the training data.
+
+```bash
+.venv/bin/python app.py --script 1 --checkpoint "dream-1-ft:..."   # game 1: 20 robot moves, starting 1.e4 Nf6
+```
+
+**The checker agent: a top-camera picture after every step.** Calibrate it once, from the page's "Calibrate the top
+camera" card: clear the board and capture it (if the board isn't found by itself, click its four corners on the
+picture: a1, h1, h8, a8), then set up the starting position and capture that. From then on, after each step Dream-1
+runs, the checker takes a picture and reads the board. If the move didn't happen (say, *the brown queen went to b2
+instead of c2*), the orchestrator sends Dream-1 the correction, and the checker looks again, until the board is right
+or six tries have failed and a person is asked. Your moves are read the same way: make the move, then press **I've
+made my move**.
+
+A picture is a "hold still" run that the app stops as soon as the station saves its first frame, well before Dream-1's
+first motion, so the arms stay at home. It takes about 4 s, and the picture stays in memory: the app writes nothing.
+The calibration is saved to `~/.dream-chess/top-calibration.npz`; calibrate again if the camera or the board moves.
+Without a calibration, a person checks each step, as before (`--no-top-camera` turns pictures off).
+
+**The supervisor watches every move as it happens** (on by default; `--no-supervise` turns it off). It follows the
+hand from the arms' joint angles, through the board calibration in `~/.dream-chess/board_fit.json`, and re-prompts
+Dream-1 mid-run when it grips an empty square or the wrong piece, or lets go on the wrong square. Once the piece lands
+on its target, it ends the run. The page shows the hand's square and grip live in the brain card. If the board moves,
+fit it again on demos recorded in the new spot:
+
+```bash
+~/dream-env/bin/python tools/fit_board.py ~/hackathon_data/<dataset> ~/.dream-chess/board_fit.json
+```
+
+To set up from the robot's side, switch the page's board to **From the robot's side**, so each piece lands on the
+right file. A rook on b2 instead of a2 puts two rooks on the b-file, and the model may reach for the wrong one.
 
 ## 5. Notes
 

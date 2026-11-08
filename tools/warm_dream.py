@@ -21,6 +21,7 @@ import time
 from pathlib import Path
 
 KEEP_WARM_S = 180.0  # how often to ask a running model again, so it isn't shut down for being idle
+STATION = "http://127.0.0.1:8091"
 
 
 def write(path: Path, **status) -> None:
@@ -54,6 +55,17 @@ def blank_request(client, checkpoint: str) -> None:
     client.set_observation({f"video.{role}": jpeg for role in roles}, {**state, "prompt": "hold still"})
 
 
+def station_busy() -> bool:
+    """Whether the station is running a move: then the model is plainly running, and a ping would only compete."""
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(STATION + "/status", timeout=2) as reply:
+            return json.loads(reply.read()).get("state") not in (None, "idle", "error")
+    except (OSError, ValueError):
+        return False
+
+
 def alive(pid: int | None) -> bool:
     if pid is None:
         return True
@@ -84,6 +96,9 @@ def main() -> None:
         return
     ready_at = None
     while alive(args.parent):
+        if ready_at is not None and station_busy():
+            time.sleep(5.0)  # keep it warm between moves, never during one
+            continue
         try:
             client.get_action()
             if ready_at is None:

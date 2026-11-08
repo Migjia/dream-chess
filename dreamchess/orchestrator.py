@@ -33,6 +33,9 @@ class Config:
     # More wrong squares than this means a bumped board or an arm in view, so don't let the
     # robot "fix" it. Ordinary failures only touch a few squares.
     max_auto_fix_squares: int = 6
+    # The robot's moves in order, in SAN, to play instead of Stockfish's (a scripted collection game). A move that's
+    # no longer legal, because the game left the script, falls back to Stockfish from then on.
+    forced_moves: tuple[str, ...] = ()
 
 
 @dataclass
@@ -114,20 +117,29 @@ class Orchestrator:
         # Catch anything bumped since the last move before planning on top of it.
         self._achieve(occupancy(self.board), names=(self._names(), self._names()))
 
-        choice = choose_piece(self.board, self.engine, self.config.margin_cp)
-        self.log(
-            f"WHAT  {chess.piece_name(choice.piece.piece_type)} on {chess.square_name(choice.square)} "
-            f"(best {choice.piece_best_cp:+d} cp, {choice.crowding} neighbors, "
-            f"{choice.alternatives} alternatives)"
-        )
-        dest = choose_destination(self.board, self.engine, choice, self.config.margin_cp)
-        self.log(f"WHERE {self.board.san(dest.move)} ({dest.cp:+d} cp, risk {dest.risk})")
-        self.voice.robot_move_chosen(self.board, dest.move)
+        scripted = self._scripted_move()
+        if scripted is not None:
+            piece = self.board.piece_at(scripted.from_square)
+            self.log(f"WHAT  {chess.piece_name(piece.piece_type)} on {chess.square_name(scripted.from_square)} "
+                     "(from the script: a move Dream-1 was trained on)")
+            self.log(f"WHERE {self.board.san(scripted)} (from the script)")
+            move = scripted
+        else:
+            choice = choose_piece(self.board, self.engine, self.config.margin_cp)
+            self.log(
+                f"WHAT  {chess.piece_name(choice.piece.piece_type)} on {chess.square_name(choice.square)} "
+                f"(best {choice.piece_best_cp:+d} cp, {choice.crowding} neighbors, "
+                f"{choice.alternatives} alternatives)"
+            )
+            dest = choose_destination(self.board, self.engine, choice, self.config.margin_cp)
+            self.log(f"WHERE {self.board.san(dest.move)} ({dest.cp:+d} cp, risk {dest.risk})")
+            move = dest.move
+        self.voice.robot_move_chosen(self.board, move)
 
         # Follow each piece through the steps, so a correction can say "the brown rook", not just "the brown piece":
         # the camera only tells colors apart, but the game knows which piece belongs where.
         names = self._names()
-        for step in plan_move(self.board, dest.move):
+        for step in plan_move(self.board, move):
             after = dict(names)
             moved = after.pop(step.source, step.piece_name) if step.source != TRAY else step.piece_name
             if step.target != TRAY:
@@ -135,10 +147,28 @@ class Orchestrator:
             self._achieve(step.expected_after, step, names=(names, after))
             names = after
 
-        self.board.push(dest.move)
+        self.board.push(move)
         self.stats.moves += 1
         self.voice.robot_move_done(self.board)
-        return dest.move
+        return move
+
+    def _scripted_move(self) -> chess.Move | None:
+        """The script's next robot move, while the game still follows the script."""
+        index = self.stats.moves
+        if getattr(self, "_off_script", False) or index >= len(self.config.forced_moves):
+            return None
+        wanted = self.config.forced_moves[index]
+        try:
+            move = self.board.parse_san(wanted)
+            # The parser forgives a lot ("Nxe4" with nothing on e4), so insist on exactly the scripted move.
+            if self.board.san(move).rstrip("+#") == wanted.rstrip("+#"):
+                return move
+            raise ValueError(wanted)
+        except ValueError:
+            self._off_script = True
+            self.log(f"WHAT  the game left the script ({self.config.forced_moves[index]} isn't legal here): "
+                     "Stockfish picks from now on")
+            return None
 
     def read_opponent_turn(self) -> chess.Move:
         self.wait_for_opponent(self.board)
@@ -187,7 +217,12 @@ class Orchestrator:
             missing, extra = compare(goal, self._observe())
             if not missing and not extra:
                 return
-            self.log(f"CHECK missing={sorted(missing)} extra={sorted(extra)}")
+            # The checker's verdict, in words, rides on the CHECK line back up to the person and the page:
+            # "the brown queen went to b2 instead of c2". The correction below goes back down to Dream-1.
+            from .checker import describe_failure
+
+            verdict = describe_failure(step, missing, extra, (names or ({}, {}))[1])
+            self.log(f"CHECK missing={sorted(missing)} extra={sorted(extra)}: {verdict}")
 
             can_retry = (
                 attempts < self.config.max_attempts

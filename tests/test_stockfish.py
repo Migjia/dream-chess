@@ -31,7 +31,7 @@ def engine():
     path = os.environ.get("STOCKFISH_PATH") or shutil.which("stockfish")
     if not path:
         pytest.skip("Stockfish isn't installed")
-    stockfish = StockfishEngine(path)
+    stockfish = StockfishEngine(path, depth=12)  # a fixed depth: the same scores on a slow CI machine as on ours
     yield stockfish
     stockfish.close()
 

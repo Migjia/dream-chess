@@ -270,7 +270,7 @@ def test_live_page_shows_the_frames_dream_1_was_handed_and_the_station_status(tm
     (frames / "top" / "000001.jpg").write_bytes(b"\xff\xd8old")
     time.sleep(0.05)
     (frames / "top" / "000002.jpg").write_bytes(b"\xff\xd8new")
-    session = app.Session(args(tmp_path, sim=False, station=station.url, frames=str(frames)))
+    session = app.Session(args(tmp_path, sim=False, station=station.url, frames=str(frames), top_camera=False))
     assert session.camera("top", grid=True) == b"\xff\xd8new"
     assert session.camera("left", grid=False) is None
     assert session.vision()["source"] == "person"
@@ -326,3 +326,61 @@ def test_without_the_dream_library_the_warm_up_says_so(tmp_path, station):  # no
     session.warm_up()
     assert session.warm_process is None
     assert session.brain()["warm"]["state"] == "off"
+
+
+def test_replaying_a_collection_game_suggests_whites_move_and_plays_the_trained_reply(tmp_path):
+    session = app.Session(args(tmp_path, script=1, fen=chess.STARTING_FEN, max_plies=2))
+    session.start()
+    state = wait_for(session, lambda s: s["pending"] and s["pending"]["kind"] == "move")
+    assert "[script: play e4, e2 to e4]" in state["pending"]["prompt"]
+    assert state["fen"] == chess.Board().fen()
+    session.answer(state["pending"]["id"], "e4")
+    state = wait_for(session, lambda s: not s["running"])
+    texts = [e.get("text", "") for e in state["events"] if e["type"] == "agent"]
+    assert any(t.startswith("WHERE Nf6 (from the script)") for t in texts)
+# --- The webcam reads the person's move ---
+
+def webcam_session(tmp_path):
+    from test_webcam import Table
+
+    from dreamchess.webcam import BoardCamera
+
+    table = Table()
+    session = app.Session(args(tmp_path))
+    session.webcam = BoardCamera(lambda: table, tmp_path / "webcam.npz")
+    table.camera.pieces = {}
+    assert session.webcam_action("empty", {"a1": "bottom-left"})["ok"]
+    table.place(chess.Board())
+    assert session.webcam_action("start", {})["calibrated"]
+    return session, table
+
+
+def test_the_webcam_reads_the_persons_move_and_the_game_goes_on(tmp_path):
+    session, table = webcam_session(tmp_path)
+    session.start()
+    state = wait_for(session, lambda s: s["pending"] and s["pending"]["kind"] == "move")
+    played = chess.Board(BROWN_MATES)
+    played.push_uci("h1g1")
+    table.place(played)
+    result = session.camera_move(state["pending"]["id"])
+    assert result["ok"] and result["san"] == "Kg1"
+    state = wait_for(session, lambda s: not s["running"])
+    assert state["summary"]["result"] == "0-1"
+    assert any(e.get("text") == "The camera read your move: Kg1." for e in state["events"])
+
+
+def test_the_webcam_says_how_to_undo_an_illegal_move(tmp_path):
+    session, table = webcam_session(tmp_path)
+    session.start()
+    state = wait_for(session, lambda s: s["pending"] and s["pending"]["kind"] == "move")
+    wrong = chess.Board(BROWN_MATES)
+    wrong.remove_piece_at(chess.H1)
+    wrong.set_piece_at(chess.H2, chess.Piece(chess.KING, chess.WHITE))  # into the rook's line: illegal
+    table.place(wrong)
+    result = session.camera_move(state["pending"]["id"])
+    assert not result["ok"]
+    assert result["problem"] == "Your king moved from h1 to h2, which isn't a legal move."
+    assert result["fix"] == "Please move your king back from h2 to h1, then make a legal move."
+    assert session.state(0)["pending"]["id"] == state["pending"]["id"]  # still waiting for a real move
+    session.answer(state["pending"]["id"], "quit")
+    wait_for(session, lambda s: not s["running"])

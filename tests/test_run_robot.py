@@ -122,7 +122,7 @@ def test_a_miss_is_retried_with_a_fix_prompt(station, tmp_path, quick):  # noqa:
     assert summary["result"] == "0-1"
     assert summary["dream_attempts"] == 2 and summary["corrections"] == 1
     prompts = [body["prompt"] for m, p, body in station.requests if p == "/start"]
-    assert "square b2" in prompts[1] and "square b1" in prompts[1]
+    assert "Column (b), Row (2)" in prompts[1] and "Column (b), Row (1)" in prompts[1]
 
 
 def test_a_lost_piece_asks_a_person_to_fix_the_board(station, tmp_path, quick):  # noqa: F811

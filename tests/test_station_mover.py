@@ -24,10 +24,12 @@ class FakeStation:
     and it moves at once"), and the next run moves at once. `never_answers` is a model that never starts."""
 
     def __init__(self, run_s=0.15, home_s=0.1, fail_run=False, never_ends=False, warm_s=0.0, move_after_s=0.3,
-                 never_answers=False):
+                 never_answers=False, stall_s=0.0):
         self.run_s, self.home_s = run_s, home_s
         self.fail_run, self.never_ends = fail_run, never_ends
         self.warm_s, self.move_after_s, self.never_answers = warm_s, move_after_s, never_answers
+        self.stall_s = stall_s  # after the first action, how long DreamAPI is too slow and the arms hold
+        self.stalls = 0
         self.chunks = 0
         self.state = "idle"
         self.last_error = None
@@ -40,7 +42,7 @@ class FakeStation:
     def status(self):
         with self.lock:
             return {"state": self.state, "run": self.run, "last_error": self.last_error, "arms": dict(self.arms),
-                    "chunks": self.chunks}
+                    "chunks": self.chunks, "stalls": self.stalls}
 
     def _later(self, seconds, action):
         def go():
@@ -59,10 +61,9 @@ class FakeStation:
             if not isinstance(body.get("steps"), int) or body["steps"] < 1:
                 return 400, {"error": "steps must be a whole number of at least 1"}
             self.run += 1
-            self.state = "starting"
-            self.chunks = 0
+            self.state = "starting"  # the real station still reports the last run's chunks until this one runs
         self._cancel.clear()
-        self._later(0.02, lambda: self._set("running"))
+        self._later(0.02, self._running)
         if self.never_answers:
             return 200, self.status()  # runs with no actions until stopped
         if self.warm_s > self.move_after_s:
@@ -79,10 +80,22 @@ class FakeStation:
                                              self._later(self.home_s, lambda: self._set("idle"))))
         return 200, self.status()
 
+    def _running(self):
+        with self.lock:
+            self.state, self.chunks = "running", 0
+
     def _first_action(self):
         with self.lock:
             if self.state == "running":
                 self.chunks = 1
+        if self.stall_s:
+            def stall():
+                end = time.time() + self.stall_s
+                while time.time() < end and not self._cancel.is_set():
+                    with self.lock:
+                        self.stalls += 1
+                    time.sleep(0.01)
+            threading.Thread(target=stall, daemon=True).start()
 
     def stop(self):
         self._cancel.set()
@@ -120,7 +133,8 @@ def station():
             length = int(self.headers.get("Content-Length") or 0)
             body = json.loads(self.rfile.read(length) or b"{}")
             fake.requests.append(("POST", self.path, body))
-            routes = {"/start": lambda: fake.start(body), "/stop": fake.stop, "/home": fake.home}
+            routes = {"/start": lambda: fake.start(body), "/stop": fake.stop, "/home": fake.home,
+                      "/prompt": lambda: (200, fake.status())}
             self._reply(*routes[self.path]()) if self.path in routes else self._reply(404, {"error": "no route"})
 
         def log_message(self, *args):
@@ -270,3 +284,68 @@ def test_a_model_that_never_answers_is_stopped_and_reported(station):
     with pytest.raises(StationError, match="never moved"):
         m.execute(STEP)
     assert len(posts(station, "/stop")) == 2  # each run stopped once its wait for an answer ran out
+
+
+def test_time_the_arms_wait_on_dreamapi_doesnt_count_against_the_attempt(station):
+    # DreamAPI answers too slowly for a while, longer than the whole limit, and the arms hold; then the run finishes.
+    station.stall_s, station.run_s = 0.6, 0.8
+    m = mover(station, attempt_s=0.1, grace_s=0.2)
+    m.execute(STEP)
+    assert posts(station, "/stop") == []  # not cut off: the stall stopped the clock
+    assert station.status()["state"] == "idle"
+
+
+def test_the_default_attempt_allows_a_minute_of_motion():
+    assert StationMover(log=lambda _: None).attempt_s == 60.0
+
+
+def test_the_last_runs_actions_dont_count_as_this_ones(station):
+    # Right after a start the station still reports the previous run's chunks. A slow-starting model must not be
+    # mistaken for one that has already answered, or the clock starts too early and cuts the warm-up off.
+    station.chunks = 40  # what the last run (say, from Dream's live view) left behind
+    station.warm_s = 0.6
+    m = mover(station, attempt_s=0.1, grace_s=0.2)
+    m.execute(STEP)
+    assert posts(station, "/stop") == []
+    assert len(posts(station, "/start")) == 2  # the warm-up was waited out, then the step ran again
+
+
+# --- Watching the move as it happens ---
+
+class FakeHands:
+    """The hand tracker, replaying a scripted path: (seconds after the run starts, sample)."""
+
+    def __init__(self, path):
+        self.path, self.start, self.ready = path, None, True
+
+    def mark(self):
+        self.start = time.time()
+        return 0
+
+    def since(self, mark):
+        due = [{"run_start": True}] + [s for at, s in self.path if time.time() - self.start >= at]
+        return due[mark:], len(due)
+
+
+def test_a_wrong_drop_is_corrected_mid_run_and_the_run_ends_once_the_piece_lands(station):
+    import chess
+
+    from dreamchess.supervisor import Supervisor
+    from dreamchess.where import plan_move
+
+    board = chess.Board("1r4k1/8/8/8/8/8/r7/6K1 b - - 1 1")
+    step = plan_move(board, chess.Move.from_uci("b8b1"))[0]
+    hand = lambda sq, z, g: {"right": {"square": sq, "z": z, "grip": g}}  # noqa: E731
+    path = [(0.10, hand("b8", 0.05, 0.1)), (0.20, hand("b3", 0.06, 0.1)), (0.25, hand("b3", 0.07, 0.9)),
+            (0.35, hand("b3", 0.05, 0.1)), (0.45, hand("b1", 0.06, 0.1)), (0.50, hand("b1", 0.06, 0.9))]
+    station.run_s = 5.0  # the run would go on for seconds; the supervisor ends it once the rook is on b1
+    m = mover(station, attempt_s=3.0, hands=FakeHands(path),
+              supervise=lambda s: Supervisor(s, {"b8": ("b", "rook"), "a2": ("b", "rook"), "g8": ("b", "king"),
+                                                 "g1": ("w", "king")}, chess.BLACK, s.expected_after))
+    started = time.time()
+    m.execute(step)
+    assert time.time() - started < 3.0
+    prompts = posts(station, "/prompt")
+    assert len(prompts) == 1 and "brown rook on square b3" in prompts[0]["prompt"]
+    assert len(posts(station, "/stop")) == 1
+    assert m.last_note == "the hand tracker: let go on b1, the target"
