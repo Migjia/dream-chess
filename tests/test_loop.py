@@ -215,7 +215,9 @@ def test_the_prompt_styles():
     assert squares == ("Using your right arm, pick up the brown rook on square b8 and place it upright in the center "
                        "of square b1. Move slowly and do not touch any other piece.")
     both = where.write_prompt("right", "b", "rook", "b8", "b1", style="both")
-    assert "on square b8 (in the row nearest you, the second square in from your right)" in both
+    assert both.startswith("Using your right arm, pick up the brown rook at Column (b), Row (8) (in the row nearest "
+                           "you, the second square in from your right) and place it upright in the center of Column (b), "
+                           "Row (1) (in the row farthest from you, the second square in from your right)")
     assert both.endswith("seven rows straight away from you. Move slowly and do not touch any other piece.")
     spatial = where.write_prompt("right", "b", "rook", "b8", "b1", style="spatial")
     assert "b8" not in spatial and "b1" not in spatial and "row nearest you" in spatial

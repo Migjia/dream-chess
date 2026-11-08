@@ -50,7 +50,8 @@ def arm_for(square: str, robot_color: chess.Color) -> str:
 
 # How a square is named in the prompt (set from the app's --prompt-style):
 #   "squares": "on square b8", the wording our demos were recorded with;
-#   "both":    "on square b8 (in the row nearest you, second square in from your right)";
+#   "both":    "at Column (b), Row (8) (in the row nearest you, the second square in from your right)", the board's
+#              printed labels plus where the square is (a little better than square names on the robot);
 #   "spatial": the description alone.
 # Dream-1 sees the board through its cameras but has no reason to know what "b8" means: the printed edge labels are
 # tiny in its pictures. Rows and columns counted from where it sits are things it can see.
@@ -100,7 +101,7 @@ def _where(square: str, style: str) -> str:
     if style == "spatial":
         return f"the square {describe_square(square)}"
     if style == "both":
-        return f"square {square} ({describe_square(square)})"
+        return f"Column ({square[0]}), Row ({square[1]}) ({describe_square(square)})"
     return f"square {square}"
 
 
@@ -112,7 +113,7 @@ def write_prompt(arm: str, color: str, piece_name: str, source: str, target: str
     if source == TRAY:
         pick = f"pick up the spare {item} from the tray on your {arm}"
     else:
-        pick = f"pick up the {item} on {_where(source, style)}"
+        pick = f"pick up the {item} {'at' if style == 'both' else 'on'} {_where(source, style)}"
     if target == TRAY:
         place = f"put it in the tray on your {arm}"
     else:
